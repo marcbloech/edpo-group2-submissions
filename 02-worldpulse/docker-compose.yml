@@ -1,0 +1,85 @@
+# Adapted from Lab 4: runner/docker-compose/docker-compose-kafka-java-choreography.yml
+# Simplified to 3 WorldPulse services + Kafka KRaft (no ZooKeeper)
+#
+# Start everything:  docker compose up --build
+# Stop everything:   docker compose down
+# View logs:         docker compose logs -f notification
+services:
+
+  # --- Kafka broker (message infrastructure) ---
+  # Uses KRaft mode (no separate ZooKeeper needed — Kafka manages itself).
+  # All 3 services connect to this broker to publish and consume events.
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    hostname: kafka                           # other containers reach Kafka at "kafka:9092"
+    networks:
+      - worldpulse
+    ports:
+      - "9092:9092"                           # internal (container-to-container) listener
+      - "29092:29092"                         # external (host machine) listener — for debugging with kafka-console-consumer
+    environment:
+      # KRaft mode: this single node acts as both broker AND controller
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # Three listeners: internal (9092), external/host (29092), controller (9093)
+      KAFKA_LISTENERS: PLAINTEXT://:9092,PLAINTEXT_HOST://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Single-node setup: replication factor = 1 (no redundancy needed for dev)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # --- Signup service (entry point) ---
+  # Exposes POST /api/signup → publishes SignupRequestedEvent to Kafka
+  signup:
+    build:
+      context: ./signup
+      dockerfile: Dockerfile
+    networks:
+      - worldpulse
+    ports:
+      - "8091:8091"                           # access via http://localhost:8091/api/signup
+    depends_on:
+      - kafka                                 # wait for Kafka to start first
+    environment:
+      # This overrides the bootstrap-servers in application.properties
+      # so the service connects to the Kafka container (not localhost)
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+
+  # --- Payment service (reacts to signups) ---
+  # Listens for SignupRequestedEvent → processes payment → publishes PaymentReceived/FailedEvent
+  payment:
+    build:
+      context: ./payment
+      dockerfile: Dockerfile
+    networks:
+      - worldpulse
+    ports:
+      - "8093:8093"
+    depends_on:
+      - kafka
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+
+  # --- Notification service (Exercise 2: Event Notification pattern) ---
+  # Listens to ALL events on the "worldpulse" topic and logs simulated emails.
+  # This is the core of the exercise — a pure consumer implementing Event Notification.
+  notification:
+    build:
+      context: ./notification
+      dockerfile: Dockerfile
+    networks:
+      - worldpulse
+    ports:
+      - "8094:8094"
+    depends_on:
+      - kafka
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+
+# All containers share this network so they can reach each other by hostname
+networks:
+  worldpulse:
+    driver: bridge
