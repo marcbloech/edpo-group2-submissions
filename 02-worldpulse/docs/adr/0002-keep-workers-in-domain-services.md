@@ -1,44 +1,30 @@
-# ADR 0002: Keep Job Workers in Domain Services
+# ADR 0002: Keep job workers in domain services
 
-- Status: Accepted
-- Date: 2026-03-17
+## Status
+
+Accepted
 
 ## Context
-A centralized worker module would reduce service autonomy and move domain behavior away from owning services.
-It would also make the process service a bottleneck for business changes.
 
-## Decision Drivers
-- Preserve microservice ownership
-- Keep domain logic close to domain models
-- Reduce coupling between orchestration and business implementation
+Zeebe job workers run the business logic behind BPMN service tasks. We could put them all in the process service, or keep them in the services that own the logic.
+
+Centralizing them would turn the process service into a huge monolith-service containing payment simulation, notification dispatch, and signup validation. That's the process anti-pattern discussed in the lecutre, and it breaks the "smart endpoints, dumb pipes" principle: our engine coordinates flow, it should not host the business logic.
 
 ## Decision
-Keep Zeebe job workers in their owning microservices:
-- signup: validate-signup, activate-account
-- payment: process-payment
-- notification: send-notification
 
-The process service only deploys BPMN resources and starts instances from incoming events.
+Workers stay in the services that own the domain:
 
-## Project Implementation
-- signup workers are implemented in:
-	- signup/workers/ValidateSignupWorker.java
-	- signup/workers/ActivateAccountWorker.java
-- payment worker is implemented in:
-	- payment/workers/ProcessPaymentWorker.java
-- notification worker is implemented in:
-	- notification/workers/SendNotificationWorker.java
-- The process service starts instances from Kafka events via process/messages/MessageListener.java and does not execute domain jobs.
-- Legacy choreography listeners were kept under a profile gate to avoid double processing in default orchestration mode.
+| Worker                   | Service             | Job type            |
+| ------------------------ | ------------------- | ------------------- |
+| `ValidateSignupWorker`   | signup (8091)       | `validate-signup`   |
+| `ActivateAccountWorker`  | signup (8091)       | `activate-account`  |
+| `ProcessPaymentWorker`   | payment (8093)      | `process-payment`   |
+| `SendNotificationWorker` | notification (8094) | `send-notification` |
 
-## Alternatives Considered
-- Put all workers in the process service
+The process service (8095) deploys BPMN and starts process instances from Kafka events.
 
-This was rejected because it breaks service boundaries and weakens team/service autonomy.
+Workers also publish business events to Kafka after completing their Zeebe job (ADR 0004), so each service participates in both orchestration and choreography (NOTE: THIS WAS NEWLY ADDED  AFTER E4 submission!).
 
 ## Consequences
-- Better alignment with microservice boundaries.
-- Domain behavior stays close to service code.
-- Process service stays focused on deployment and process start, not business execution.
-- Each domain service must include Zeebe client configuration and worker lifecycle management.
-- Service logs directly show job execution in the owning bounded context, improving operational clarity.
+
+Domain logic stays close to domain code, and logs appear in the right place. The process service stays lean. On the other hand, every service now needs the Camunda SDK and Zeebe config. And if a worker type string in the BPMN doesn't match the `@JobWorker` annotation in Java, nothing happens at runtime (We caught this twice during development).

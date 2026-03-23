@@ -1,47 +1,30 @@
-# ADR 0003: Split BPMN into Signup and Payment Processes
+# ADR 0003: Split BPMN into signup and payment processes via call activity
 
-- Status: Accepted
-- Date: 2026-03-17
+## Status
+
+Accepted
 
 ## Context
-The end-to-end flow contains distinct concerns: signup intake and payment lifecycle.
-These concerns evolve at different speeds and are usually reviewed by different stakeholders.
 
-## Decision Drivers
-- Keep BPMN diagrams understandable
-- Isolate payment-specific complexity (retry, error, human decision)
-- Avoid one large process that is hard to maintain
+The signup flow has two parts that don't belong together: intake (validation, tier branching, account activation) and payment (charge, retry, human decision, 5-minute timeout). Payment is significantly more complex and changes (potentially) more often.
+
+We needed to decide how to connect them now. The options were a Zeebe call activity (orchestration) or Kafka events (choreography).
+
+Using Lecture 4's heuistic of "Is it OK if the message is ignored?" , we must admit that for signup-to-payment, the answer is "no". A PRO user can't be activated without a successful payment; the signup process has to wait for the result. Thus, that is a command, not merely an event.
 
 ## Decision
-Use two BPMN processes:
-- signup-process for intake, validation, and tier branching
-- payment-process for payment handling, retry decision, and payment outcomes
 
-Link them via call activity from signup-process to payment-process when payment is required.
+Two separate BPMN processes, linked by a call activity:
 
-## Project Implementation
-- signup-process handles:
-	- validate-signup
-	- initial notification
-	- tier decision (FREE vs PRO/ENTERPRISE)
-	- direct account activation for FREE
-- For PRO/ENTERPRISE, signup-process invokes payment-process via call activity (called element: payment-process).
-- payment-process handles:
-	- process-payment service task
-	- success/failure gateway
-	- retry decision user task (retryPaymentForm)
-	- success/failure/error notifications
-	- account activation on successful payment path
-- Notification type constants are passed via FEEL expressions in BPMN mappings.
+- `signup-process`: validation, tier branching, account activation
+- `payment-process`: payment handling, retry, timeout, error paths
 
-## Alternatives Considered
-- One single monolithic BPMN for both signup and payment
+For PRO/ENTERPRISE tiers, `signup-process` calls `payment-process` and blocks until it completes.
 
-This was rejected because it increases diagram complexity and makes testing and change management harder.
+We didn't use choreography via Kafka here because of the coupling: signup depends on the payment outcome. Publishing a Kafka command and waiting for a response would create the a dependency, but more hidden. The call activity makes it explicit, visible in Operate, and manageable with BPMN timeout and error boundaries.
+
+But kafka choreography is used at the system outer boundary instead (ADR 0004), where events can be ignored. `SignupRequestedEvent` triggers orchestration, and workers broadcast business events for optional downstream consumers (which will be later implemented).
 
 ## Consequences
-- Clearer process ownership and easier maintenance.
-- Payment logic can evolve without reshaping signup flow.
-- Process diagrams are simpler to review and explain.
-- Variable mapping between parent and child process must be managed carefully.
-- Testing can target FREE and PRO branches independently with trace-level verification in logs.
+
+Payment logic can be adapted on its own. Adding (e.g.) a fraud-check step means changing only the `payment-process`. Plus, the diagrams are smaller and more readable. Thus, our architecture uses both orchestration and choreography (hybrid approach). The cost of this is I/O variable mapping between parent and child process in BPMN, and two process definitions to deploy instead of one.
