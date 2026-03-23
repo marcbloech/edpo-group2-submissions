@@ -1,6 +1,7 @@
 package ch.unisg.kafka.experiments.producer;
 
 import ch.unisg.kafka.experiments.util.MetricsCollector;
+import ch.unisg.kafka.experiments.util.ResourceMonitor;
 import ch.unisg.kafka.experiments.util.TopicManager;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -44,11 +45,13 @@ public class LoadTestExperiment {
 
         int totalMessages = numThreads * MSGS_PER_THREAD;
         MetricsCollector metrics = new MetricsCollector("threads=" + numThreads);
+        ResourceMonitor resourceMonitor = new ResourceMonitor();
         CountDownLatch latch = new CountDownLatch(totalMessages);
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
         System.out.printf("%nSending %,d messages with %d threads ...%n", totalMessages, numThreads);
         metrics.start();
+        resourceMonitor.start(500);
 
         for (int t = 0; t < numThreads; t++) {
             final int threadId = t;
@@ -82,12 +85,14 @@ public class LoadTestExperiment {
 
         latch.await();
         metrics.stop();
+        resourceMonitor.stop();
         executor.shutdown();
 
         // consume all messages back to measure drop rate (sent vs actually received)
         long consumed = verifyWithConsumer();
 
         metrics.printSummary();
+        resourceMonitor.printSummary();
         System.out.printf("  Consumer verified: %,d / %,d", consumed, totalMessages);
 
         topicManager.close();

@@ -51,6 +51,14 @@ mvn exec:java -Dexec.mainClass="ch.unisg.kafka.experiments.consumer.RebalancingE
 | `OffsetResetExperiment` | single broker | `auto.offset.reset` behavior (earliest vs latest), demonstrates data loss risk with `latest` when consumer starts after messages are produced |
 | `RebalancingExperiment` | single broker | Consumer group rebalancing, partition assignment with multiple consumers, multiple consumer groups consuming independently |
 
+**Results:** See `consumer-experiments-results.md` for detailed test results.
+
+**Key Findings:**
+- Consumer lag builds up when consumer processes slower than producer
+- `auto.offset.reset=earliest` reads from beginning, `latest` only reads new messages (can cause data loss)
+- Partitions automatically redistribute when consumers join/leave group
+- Each consumer group consumes messages independently
+
 ### Fault Tolerance & Reliability Experiments
 
 ```bash
@@ -93,3 +101,7 @@ Two-phase experiment that tests all combinations of replication factor (1/2/3) a
 Phase B kills `docker-kafka1-1` before each test and sends only to the alive brokers (`localhost:9094,localhost:9096`). After each test, the broker is restarted and the cluster is allowed to recover.
 
 **Outputs:** `dropped-messages-results.txt` — per-config sent/received/dropped counts, drop rate percentages, latency stats, and a final comparison table.
+
+## Adding New Experiments
+
+Create classes under `consumer/` or `faulttolerance/` packages. Use `TopicManager` for topic setup and `MetricsCollector` for measurements. Each experiment is a standalone `main()` class run via `exec-maven-plugin`.

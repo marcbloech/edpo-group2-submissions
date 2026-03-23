@@ -2,6 +2,7 @@
 package ch.unisg.worldpulse.payment.messages;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import ch.unisg.worldpulse.payment.application.PaymentService;
  * Flow: SignupRequestedEvent arrives → process payment → publish PaymentReceived or PaymentFailed
  */
 @Component
+@Profile("legacy-choreography")
 public class MessageListener {
 
   @Autowired

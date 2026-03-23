@@ -1,0 +1,75 @@
+{
+  "components": [
+    {
+      "text": "### Payment Retry Decision\n\nThe payment processing has failed. Would you like to retry the payment or cancel the signup?",
+      "type": "text",
+      "id": "Field_description",
+      "layout": {
+        "row": "Row_0"
+      }
+    },
+    {
+      "label": "Email",
+      "type": "textfield",
+      "id": "Field_email",
+      "key": "email",
+      "disabled": true,
+      "layout": {
+        "row": "Row_1"
+      }
+    },
+    {
+      "label": "Name",
+      "type": "textfield",
+      "id": "Field_name",
+      "key": "name",
+      "disabled": true,
+      "layout": {
+        "row": "Row_1"
+      }
+    },
+    {
+      "label": "Tier",
+      "type": "textfield",
+      "id": "Field_tier",
+      "key": "tier",
+      "disabled": true,
+      "layout": {
+        "row": "Row_2"
+      }
+    },
+    {
+      "label": "Payment Amount",
+      "type": "number",
+      "id": "Field_amount",
+      "key": "paymentAmount",
+      "disabled": true,
+      "layout": {
+        "row": "Row_2"
+      }
+    },
+    {
+      "label": "Retry Payment?",
+      "type": "checkbox",
+      "id": "Field_retryPayment",
+      "key": "retryPayment",
+      "defaultValue": false,
+      "description": "Check to retry payment, uncheck to cancel signup",
+      "layout": {
+        "row": "Row_3"
+      },
+      "validate": {
+        "required": true
+      }
+    }
+  ],
+  "type": "default",
+  "id": "retryPaymentForm",
+  "executionPlatform": "Camunda Cloud",
+  "executionPlatformVersion": "8.4.0",
+  "exporter": {
+    "name": "Camunda Modeler",
+    "version": "5.20.0"
+  },
+  "schemaVersion": 12
+}

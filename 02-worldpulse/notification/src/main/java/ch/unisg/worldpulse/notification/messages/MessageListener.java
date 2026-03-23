@@ -5,6 +5,7 @@
 package ch.unisg.worldpulse.notification.messages;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import ch.unisg.worldpulse.notification.application.NotificationService;
 
 @Component
+@Profile("legacy-choreography")
 public class MessageListener {
 
   private static final String TOPIC_NAME = "worldpulse";
@@ -45,13 +47,18 @@ public class MessageListener {
     // Route to the appropriate notification method based on event type
     // (different mails depending on event typ)
     switch (messageType) {
-      case "SignupRequestedEvent" ->
+      case "SignupRequestedEvent":
         notificationService.notifySignup(traceid, data);
-      case "PaymentReceivedEvent" ->
+        break;
+      case "PaymentReceivedEvent":
         notificationService.notifyPaymentReceived(traceid, data);
-      case "PaymentFailedEvent" ->
+        break;
+      case "PaymentFailedEvent":
         notificationService.notifyPaymentFailed(traceid, data);
-      default -> { } // ignore other events
+        break;
+      default:
+        // ignore other events
+        break;
     }
   }
 }

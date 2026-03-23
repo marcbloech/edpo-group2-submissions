@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_Signup" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0">
+  <bpmn:process id="signup-process" name="WorldPulse Signup Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_SignupRequest" name="Signup Request Received">
+      <bpmn:outgoing>Flow_to_ValidateSignup</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_ValidateSignup" name="Validate Signup Data">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="validate-signup" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:output source="=userId" target="userId" />
+          <zeebe:output source="=traceid" target="traceid" />
+          <zeebe:output source="=source" target="source" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_ValidateSignup</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_InitialNotification</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_SendInitialNotification" name="Send Initial Processing Notification">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="&#34;SignupRequestedEvent&#34;" target="notificationType" />
+          <zeebe:output source="=notificationSent" target="notificationSent" />
+          <zeebe:output source="=notificationId" target="notificationId" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_InitialNotification</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_CheckTier</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_CheckTier" name="Tier?">
+      <bpmn:incoming>Flow_to_CheckTier</bpmn:incoming>
+      <bpmn:outgoing>Flow_PaymentRequired</bpmn:outgoing>
+      <bpmn:outgoing>Flow_FreeTier</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_NotifyFreeTier" name="Send Welcome Notification">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="&#34;SignupRequestedEvent&#34;" target="notificationType" />
+          <zeebe:output source="=notificationSent" target="notificationSent" />
+          <zeebe:output source="=notificationId" target="notificationId" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_FreeTier</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_ActivateAccountFree</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_ActivateAccount" name="Activate User Account">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="activate-account" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=userId" target="userId" />
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:output source="=accountActive" target="accountActive" />
+          <zeebe:output source="=activatedAt" target="activatedAt" />
+          <zeebe:output source="=apiToken" target="apiToken" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_ActivateAccountFree</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_EndSuccess</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:callActivity id="CallActivity_PaymentProcess" name="Execute Payment Process">
+      <bpmn:extensionElements>
+        <zeebe:calledElement processId="payment-process" propagateAllChildVariables="true" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_PaymentRequired</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_EndPaidDelegated</bpmn:outgoing>
+    </bpmn:callActivity>
+    <bpmn:endEvent id="EndEvent_SignupSuccess" name="Signup Completed Successfully">
+      <bpmn:incoming>Flow_to_EndSuccess</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndEvent_PaidDelegated" name="Delegated To Payment Process">
+      <bpmn:incoming>Flow_to_EndPaidDelegated</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_to_ValidateSignup" sourceRef="StartEvent_SignupRequest" targetRef="Task_ValidateSignup" />
+    <bpmn:sequenceFlow id="Flow_to_InitialNotification" sourceRef="Task_ValidateSignup" targetRef="Task_SendInitialNotification" />
+    <bpmn:sequenceFlow id="Flow_to_CheckTier" sourceRef="Task_SendInitialNotification" targetRef="Gateway_CheckTier" />
+    <bpmn:sequenceFlow id="Flow_PaymentRequired" name="PRO or ENTERPRISE" sourceRef="Gateway_CheckTier" targetRef="CallActivity_PaymentProcess">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= tier = "PRO" or tier = "ENTERPRISE"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_FreeTier" name="FREE" sourceRef="Gateway_CheckTier" targetRef="Task_NotifyFreeTier">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= tier = "FREE"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_ActivateAccountFree" sourceRef="Task_NotifyFreeTier" targetRef="Task_ActivateAccount" />
+    <bpmn:sequenceFlow id="Flow_to_EndSuccess" sourceRef="Task_ActivateAccount" targetRef="EndEvent_SignupSuccess" />
+    <bpmn:sequenceFlow id="Flow_to_EndPaidDelegated" sourceRef="CallActivity_PaymentProcess" targetRef="EndEvent_PaidDelegated" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Signup">
+    <bpmndi:BPMNPlane id="BPMNPlane_Signup" bpmnElement="signup-process">
+      <bpmndi:BPMNShape id="StartEvent_SignupRequest_di" bpmnElement="StartEvent_SignupRequest">
+        <dc:Bounds x="180" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="159" y="258" width="79" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ValidateSignup_di" bpmnElement="Task_ValidateSignup">
+        <dc:Bounds x="270" y="200" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SendInitialNotification_di" bpmnElement="Task_SendInitialNotification">
+        <dc:Bounds x="450" y="200" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_CheckTier_di" bpmnElement="Gateway_CheckTier" isMarkerVisible="true">
+        <dc:Bounds x="650" y="215" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="663" y="265" width="25" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyFreeTier_di" bpmnElement="Task_NotifyFreeTier">
+        <dc:Bounds x="770" y="80" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ActivateAccount_di" bpmnElement="Task_ActivateAccount">
+        <dc:Bounds x="980" y="80" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_SignupSuccess_di" bpmnElement="EndEvent_SignupSuccess">
+        <dc:Bounds x="1172" y="102" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1159" y="138" width="62" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="CallActivity_PaymentProcess_di" bpmnElement="CallActivity_PaymentProcess">
+        <dc:Bounds x="805" y="200" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_PaidDelegated_di" bpmnElement="EndEvent_PaidDelegated">
+        <dc:Bounds x="1027" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1002" y="258" width="87" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_to_ValidateSignup_di" bpmnElement="Flow_to_ValidateSignup">
+        <di:waypoint x="216" y="240" />
+        <di:waypoint x="270" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_InitialNotification_di" bpmnElement="Flow_to_InitialNotification">
+        <di:waypoint x="390" y="240" />
+        <di:waypoint x="450" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_CheckTier_di" bpmnElement="Flow_to_CheckTier">
+        <di:waypoint x="590" y="240" />
+        <di:waypoint x="650" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_PaymentRequired_di" bpmnElement="Flow_PaymentRequired">
+        <di:waypoint x="700" y="240" />
+        <di:waypoint x="805" y="240" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="718" y="215" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FreeTier_di" bpmnElement="Flow_FreeTier">
+        <di:waypoint x="675" y="215" />
+        <di:waypoint x="675" y="120" />
+        <di:waypoint x="770" y="120" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="685" y="151" width="30" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_ActivateAccountFree_di" bpmnElement="Flow_to_ActivateAccountFree">
+        <di:waypoint x="910" y="120" />
+        <di:waypoint x="980" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_EndSuccess_di" bpmnElement="Flow_to_EndSuccess">
+        <di:waypoint x="1110" y="120" />
+        <di:waypoint x="1172" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_EndPaidDelegated_di" bpmnElement="Flow_to_EndPaidDelegated">
+        <di:waypoint x="975" y="240" />
+        <di:waypoint x="1027" y="240" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,10 +1,10 @@
-<!-- Adapted from Lab 4: kafka/java/choreography-alternative/payment/pom.xml -->
+<!-- Process service: bridges Kafka events to Zeebe (Camunda 8) BPMN orchestration -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>ch.unisg.worldpulse</groupId>
-    <artifactId>worldpulse-payment</artifactId>
+    <artifactId>worldpulse-process</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 
     <properties>
@@ -28,6 +28,7 @@
             <artifactId>spring-boot-starter-camunda-sdk</artifactId>
             <version>8.7.0-alpha5</version>
             <exclusions>
+                <!-- Exclude Log4J2-SLF4J bridge — we use Logback (from spring-boot-starter-web) -->
                 <exclusion>
                     <groupId>org.apache.logging.log4j</groupId>
                     <artifactId>log4j-slf4j2-impl</artifactId>
@@ -43,7 +44,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
                 <configuration>
-                    <mainClass>ch.unisg.worldpulse.payment.PaymentApplication</mainClass>
+                    <mainClass>ch.unisg.worldpulse.process.ProcessApplication</mainClass>
                 </configuration>
             </plugin>
             <plugin>

@@ -1,6 +1,7 @@
 package ch.unisg.kafka.experiments.producer;
 
 import ch.unisg.kafka.experiments.util.MetricsCollector;
+import ch.unisg.kafka.experiments.util.ResourceMonitor;
 import ch.unisg.kafka.experiments.util.TopicManager;
 import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -45,6 +46,7 @@ public class AcksExperiment {
 
         // use our helper class to collect metrics about latency, throughput, and success/failure counts
         MetricsCollector metrics = new MetricsCollector("acks=" + acks);
+        ResourceMonitor resourceMonitor = new ResourceMonitor();
 
         // Create new producer
         KafkaProducer<String, String> producer = new KafkaProducer<>(props);
@@ -58,6 +60,7 @@ public class AcksExperiment {
 
         System.out.printf("%nSending %,d messages with acks=%s ...%n", NUM_MESSAGES, acks);
         metrics.start();
+        resourceMonitor.start(500);
 
         for (int i = 0; i < NUM_MESSAGES; i++) {
             String key = "key-" + i;
@@ -81,10 +84,12 @@ public class AcksExperiment {
 
         latch.await();
         metrics.stop();
+        resourceMonitor.stop();
 
         producer.close();
         topicManager.close();
 
         metrics.printSummary();
+        resourceMonitor.printSummary();
     }
 }

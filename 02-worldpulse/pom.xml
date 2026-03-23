@@ -12,5 +12,6 @@
         <module>signup</module>
         <module>payment</module>
         <module>notification</module>
+        <module>process</module>
     </modules>
 </project>

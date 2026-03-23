@@ -1,9 +1,9 @@
 # Adapted from Lab 4: runner/docker-compose/docker-compose-kafka-java-choreography.yml
-# Simplified to 3 WorldPulse services + Kafka KRaft (no ZooKeeper)
+# Extended with Camunda 8 (Zeebe) infrastructure for BPMN orchestration (E3/E4)
 #
 # Start everything:  docker compose up --build
 # Stop everything:   docker compose down
-# View logs:         docker compose logs -f notification
+# View logs:         docker compose logs -f process
 services:
 
   # --- Kafka broker (message infrastructure) ---
@@ -47,6 +47,9 @@ services:
       # This overrides the bootstrap-servers in application.properties
       # so the service connects to the Kafka container (not localhost)
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
+      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
+      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
 
   # --- Payment service (reacts to signups) ---
   # Listens for SignupRequestedEvent → processes payment → publishes PaymentReceived/FailedEvent
@@ -62,6 +65,9 @@ services:
       - kafka
     environment:
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
+      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
+      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
 
   # --- Notification service (Exercise 2: Event Notification pattern) ---
   # Listens to ALL events on the "worldpulse" topic and logs simulated emails.
@@ -78,8 +84,112 @@ services:
       - kafka
     environment:
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
+      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
+      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
+
+  # --- Elasticsearch (required by Zeebe for exporting process data) ---
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.16
+    hostname: elasticsearch
+    networks:
+      - worldpulse
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - cluster.name=elasticsearch
+      - bootstrap.memory_lock=true
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elastic:/usr/share/elasticsearch/data
+
+  # --- Zeebe broker (Camunda 8 process engine) ---
+  # Runs BPMN processes; services connect via gRPC on port 26500
+  zeebe:
+    image: camunda/zeebe:8.5.17
+    hostname: zeebe
+    networks:
+      - worldpulse
+    ports:
+      - "26500:26500"
+      - "9600:9600"
+    environment:
+      - ZEEBE_BROKER_EXPORTERS_ELASTICSEARCH_CLASSNAME=io.camunda.zeebe.exporter.ElasticsearchExporter
+      - ZEEBE_BROKER_EXPORTERS_ELASTICSEARCH_ARGS_URL=http://elasticsearch:9200
+      - ZEEBE_BROKER_EXPORTERS_ELASTICSEARCH_ARGS_BULK_SIZE=1
+      - ZEEBE_BROKER_DATA_DISKUSAGECOMMANDWATERMARK=0.998
+      - ZEEBE_BROKER_DATA_DISKUSAGEREPLICATIONWATERMARK=0.999
+    depends_on:
+      - elasticsearch
+
+  # --- Operate (Camunda 8 monitoring UI) ---
+  # View deployed processes, running instances, incidents at http://localhost:8085
+  operate:
+    image: camunda/operate:8.5.17
+    hostname: operate
+    networks:
+      - worldpulse
+    ports:
+      - "8085:8080"
+    environment:
+      - CAMUNDA_OPERATE_ZEEBE_GATEWAYADDRESS=zeebe:26500
+      - CAMUNDA_OPERATE_ELASTICSEARCH_URL=http://elasticsearch:9200
+      - CAMUNDA_OPERATE_ZEEBEELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+      - zeebe
+
+  # --- Tasklist (Camunda 8 user task UI) ---
+  # For human tasks in BPMN processes at http://localhost:8086
+  tasklist:
+    image: camunda/tasklist:8.5.17
+    hostname: tasklist
+    networks:
+      - worldpulse
+    ports:
+      - "8086:8080"
+    environment:
+      - CAMUNDA_TASKLIST_ZEEBE_GATEWAYADDRESS=zeebe:26500
+      - CAMUNDA_TASKLIST_ELASTICSEARCH_URL=http://elasticsearch:9200
+      - CAMUNDA_TASKLIST_ZEEBEELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+      - zeebe
+
+  # --- Process service (Kafka → Zeebe bridge) ---
+  # Listens for SignupRequestedEvent on Kafka, starts BPMN process instances in Zeebe
+  process:
+    build:
+      context: ./process
+      dockerfile: Dockerfile
+    restart: on-failure
+    networks:
+      - worldpulse
+    ports:
+      - "8095:8095"
+    depends_on:
+      - kafka
+      - zeebe
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - CAMUNDA_CLIENT_ZEEBE_ENABLED=true
+      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
+      - CAMUNDA_CLIENT_MODE=selfManaged
+      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
+      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
 
 # All containers share this network so they can reach each other by hostname
 networks:
   worldpulse:
     driver: bridge
+
+volumes:
+  elastic:
+    driver: local
