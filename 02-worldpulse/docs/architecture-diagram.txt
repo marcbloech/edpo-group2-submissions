@@ -1,0 +1,56 @@
+direction down
+typeface clean
+colorMode bold
+
+// External entry point
+Client [icon: monitor, label: "Client (curl / UI)"]
+
+// Current services
+WorldPulse Services [color: blue] {
+  Signup [icon: spring, label: "Signup Service :8091"]
+  Payment [icon: spring, label: "Payment Service :8093"]
+  Notification [icon: spring, label: "Notification Service :8094"]
+  Process [icon: spring, label: "Process Service :8095"]
+}
+
+// Kafka
+Kafka Cluster [color: orange] {
+  worldpulse topic [icon: kafka, label: "Topic: worldpulse"]
+}
+
+// Camunda 8 / Zeebe
+Camunda 8 Platform [color: green] {
+  Zeebe [icon: camunda, label: "Zeebe Broker :26500"]
+  Operate [icon: camunda, label: "Operate UI :8085"]
+  Tasklist [icon: camunda, label: "Tasklist UI :8086"]
+  Elasticsearch [icon: elasticsearch, label: "Elasticsearch :9200"]
+}
+
+// Future extensions (dashed)
+Future Extensions [color: grey] {
+  Stock Service_1 [icon: spring, label: Stock Service]
+  More Services [icon: spring]
+  Email Gateway [icon: gmail, label: "Email Gateway (SMTP)"]
+}
+
+// Current connections — Kafka choreography
+Client > Signup: POST /api/signup
+Signup > worldpulse topic: SignupRequestedEvent
+worldpulse topic > Payment: consumes
+Payment > worldpulse topic: PaymentReceived/FailedEvent
+worldpulse topic > Notification: consumes all events
+
+// Process service — Kafka to Zeebe bridge
+worldpulse topic > Process: consumes SignupRequestedEvent
+Process > Zeebe: starts BPMN process instance (gRPC)
+Zeebe > Process: activates jobs (hello-signup)
+
+// Camunda 8 internal connections
+Zeebe > Elasticsearch: exports process data
+Elasticsearch > Operate: reads process instances
+Elasticsearch > Tasklist: reads user tasks
+
+// Future connections
+worldpulse topic --> Stock Service_1: Event-Carried State Transfer [color: grey]
+worldpulse topic --> More Services: Some other Types of Events [color: grey]
+Notification --> Email Gateway: SMTP integration [color: grey]

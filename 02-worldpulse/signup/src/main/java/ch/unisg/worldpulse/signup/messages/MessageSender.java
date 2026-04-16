@@ -2,6 +2,8 @@
 
 package ch.unisg.worldpulse.signup.messages;
 
+import java.nio.charset.StandardCharsets;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -55,7 +57,7 @@ public class MessageSender {
 
       // Add the event type as a Kafka header (lets consumers check the event type
       // from header without having to deserialize the entire JSON)
-      record.headers().add("type", m.getType().getBytes());
+      record.headers().add("type", m.getType().getBytes(StandardCharsets.UTF_8));
 
       kafkaTemplate.send(record);
     } catch (Exception e) {

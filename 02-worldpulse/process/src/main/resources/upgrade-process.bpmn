@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  id="Definitions_Upgrade"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="Camunda Modeler"
+                  exporterVersion="5.45.0">
+
+  <bpmn:process id="upgrade-process" name="WorldPulse Upgrade Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_UpgradeRequested" name="Upgrade Requested">
+      <bpmn:outgoing>Flow_to_NotifyUpgradeRequested</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:sendTask id="Task_NotifyUpgradeRequested" name="Notify Upgrade Requested">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=targetTier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=currentTier" target="currentTier" />
+          <zeebe:input source="=targetTier" target="targetTier" />
+          <zeebe:input source="=&quot;UpgradeRequestedEvent&quot;" target="notificationType" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_NotifyUpgradeRequested</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_ProcessUpgradePayment</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <bpmn:serviceTask id="Task_ProcessUpgradePayment" name="Process Upgrade Payment">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-payment" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=userId" target="userId" />
+          <zeebe:input source="=targetTier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:output source="=paymentSuccess" target="paymentSuccess" />
+          <zeebe:output source="=paymentAmount" target="paymentAmount" />
+          <zeebe:output source="=transactionId" target="transactionId" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_ProcessUpgradePayment</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_UpgradePaymentGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="Gateway_UpgradePaymentResult" name="Upgrade Payment Successful?">
+      <bpmn:incoming>Flow_to_UpgradePaymentGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_UpgradePaymentSuccess</bpmn:outgoing>
+      <bpmn:outgoing>Flow_UpgradePaymentFailed</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="Task_ApplyTierUpgrade" name="Apply Tier Upgrade">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="apply-tier-upgrade" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=userId" target="userId" />
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=currentTier" target="currentTier" />
+          <zeebe:input source="=targetTier" target="targetTier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:output source="=upgradeApplied" target="upgradeApplied" />
+          <zeebe:output source="=upgradedAt" target="upgradedAt" />
+          <zeebe:output source="=tier" target="tier" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_UpgradePaymentSuccess</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_NotifyUpgradeCompleted</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sendTask id="Task_NotifyUpgradeCompleted" name="Notify Upgrade Completed">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=currentTier" target="currentTier" />
+          <zeebe:input source="=targetTier" target="targetTier" />
+          <zeebe:input source="=paymentAmount" target="paymentAmount" />
+          <zeebe:input source="=transactionId" target="transactionId" />
+          <zeebe:input source="=upgradedAt" target="upgradedAt" />
+          <zeebe:input source="=&quot;UpgradeCompletedEvent&quot;" target="notificationType" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_NotifyUpgradeCompleted</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_EndUpgradeCompleted</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <bpmn:sendTask id="Task_NotifyUpgradePaymentFailed" name="Notify Upgrade Payment Failed">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=targetTier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=currentTier" target="currentTier" />
+          <zeebe:input source="=targetTier" target="targetTier" />
+          <zeebe:input source="=paymentAmount" target="paymentAmount" />
+          <zeebe:input source="=&quot;UpgradePaymentFailedEvent&quot;" target="notificationType" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_UpgradePaymentFailed</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_EndUpgradeFailed</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <bpmn:endEvent id="EndEvent_UpgradeCompleted" name="Upgrade Completed">
+      <bpmn:incoming>Flow_to_EndUpgradeCompleted</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:endEvent id="EndEvent_UpgradeFailed" name="Upgrade Failed">
+      <bpmn:incoming>Flow_to_EndUpgradeFailed</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_to_NotifyUpgradeRequested" sourceRef="StartEvent_UpgradeRequested" targetRef="Task_NotifyUpgradeRequested" />
+    <bpmn:sequenceFlow id="Flow_to_ProcessUpgradePayment" sourceRef="Task_NotifyUpgradeRequested" targetRef="Task_ProcessUpgradePayment" />
+    <bpmn:sequenceFlow id="Flow_to_UpgradePaymentGateway" sourceRef="Task_ProcessUpgradePayment" targetRef="Gateway_UpgradePaymentResult" />
+    <bpmn:sequenceFlow id="Flow_UpgradePaymentSuccess" name="Yes" sourceRef="Gateway_UpgradePaymentResult" targetRef="Task_ApplyTierUpgrade">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= paymentSuccess = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_UpgradePaymentFailed" name="No" sourceRef="Gateway_UpgradePaymentResult" targetRef="Task_NotifyUpgradePaymentFailed">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= paymentSuccess = false</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_to_NotifyUpgradeCompleted" sourceRef="Task_ApplyTierUpgrade" targetRef="Task_NotifyUpgradeCompleted" />
+    <bpmn:sequenceFlow id="Flow_to_EndUpgradeCompleted" sourceRef="Task_NotifyUpgradeCompleted" targetRef="EndEvent_UpgradeCompleted" />
+    <bpmn:sequenceFlow id="Flow_to_EndUpgradeFailed" sourceRef="Task_NotifyUpgradePaymentFailed" targetRef="EndEvent_UpgradeFailed" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Upgrade">
+    <bpmndi:BPMNPlane id="BPMNPlane_Upgrade" bpmnElement="upgrade-process">
+      <bpmndi:BPMNShape id="StartEvent_UpgradeRequested_di" bpmnElement="StartEvent_UpgradeRequested">
+        <dc:Bounds x="120" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyUpgradeRequested_di" bpmnElement="Task_NotifyUpgradeRequested">
+        <dc:Bounds x="220" y="190" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ProcessUpgradePayment_di" bpmnElement="Task_ProcessUpgradePayment">
+        <dc:Bounds x="460" y="190" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_UpgradePaymentResult_di" bpmnElement="Gateway_UpgradePaymentResult" isMarkerVisible="true">
+        <dc:Bounds x="700" y="205" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ApplyTierUpgrade_di" bpmnElement="Task_ApplyTierUpgrade">
+        <dc:Bounds x="830" y="90" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyUpgradeCompleted_di" bpmnElement="Task_NotifyUpgradeCompleted">
+        <dc:Bounds x="1080" y="90" width="180" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_UpgradeCompleted_di" bpmnElement="EndEvent_UpgradeCompleted">
+        <dc:Bounds x="1330" y="112" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyUpgradePaymentFailed_di" bpmnElement="Task_NotifyUpgradePaymentFailed">
+        <dc:Bounds x="830" y="320" width="190" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_UpgradeFailed_di" bpmnElement="EndEvent_UpgradeFailed">
+        <dc:Bounds x="1090" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Flow_to_NotifyUpgradeRequested_di" bpmnElement="Flow_to_NotifyUpgradeRequested">
+        <di:waypoint x="156" y="230" />
+        <di:waypoint x="220" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_ProcessUpgradePayment_di" bpmnElement="Flow_to_ProcessUpgradePayment">
+        <di:waypoint x="390" y="230" />
+        <di:waypoint x="460" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_UpgradePaymentGateway_di" bpmnElement="Flow_to_UpgradePaymentGateway">
+        <di:waypoint x="630" y="230" />
+        <di:waypoint x="700" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_UpgradePaymentSuccess_di" bpmnElement="Flow_UpgradePaymentSuccess">
+        <di:waypoint x="750" y="230" />
+        <di:waypoint x="790" y="230" />
+        <di:waypoint x="790" y="130" />
+        <di:waypoint x="830" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_NotifyUpgradeCompleted_di" bpmnElement="Flow_to_NotifyUpgradeCompleted">
+        <di:waypoint x="1000" y="130" />
+        <di:waypoint x="1080" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_EndUpgradeCompleted_di" bpmnElement="Flow_to_EndUpgradeCompleted">
+        <di:waypoint x="1260" y="130" />
+        <di:waypoint x="1330" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_UpgradePaymentFailed_di" bpmnElement="Flow_UpgradePaymentFailed">
+        <di:waypoint x="750" y="230" />
+        <di:waypoint x="790" y="230" />
+        <di:waypoint x="790" y="360" />
+        <di:waypoint x="830" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_EndUpgradeFailed_di" bpmnElement="Flow_to_EndUpgradeFailed">
+        <di:waypoint x="1020" y="360" />
+        <di:waypoint x="1090" y="360" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

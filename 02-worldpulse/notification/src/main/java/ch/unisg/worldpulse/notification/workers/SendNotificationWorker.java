@@ -41,11 +41,23 @@ public class SendNotificationWorker {
     String name = getString(vars, "name");
     String tier = getString(vars, "tier");
 
-    JsonNode data = objectMapper.valueToTree(Map.of(
-        "name", name,
-        "email", email,
-        "tier", tier
-    ));
+    Map<String, Object> dataMap = new HashMap<>();
+    dataMap.put("name", name);
+    dataMap.put("email", email);
+    dataMap.put("tier", tier);
+    copyIfPresent(vars, dataMap, "paymentAmount");
+    copyIfPresent(vars, dataMap, "transactionId");
+    copyIfPresent(vars, dataMap, "refundSuccess");
+    copyIfPresent(vars, dataMap, "refundSkipped");
+    copyIfPresent(vars, dataMap, "refundTransactionId");
+    copyIfPresent(vars, dataMap, "currentTier");
+    copyIfPresent(vars, dataMap, "targetTier");
+    copyIfPresent(vars, dataMap, "reason");
+    copyIfPresent(vars, dataMap, "deactivatedAt");
+    copyIfPresent(vars, dataMap, "upgradedAt");
+    copyIfPresent(vars, dataMap, "upgradeApplied");
+
+    JsonNode data = objectMapper.valueToTree(dataMap);
 
     try {
       if ("SignupRequestedEvent".equals(notificationType)) {
@@ -54,6 +66,22 @@ public class SendNotificationWorker {
         notificationService.notifyPaymentReceived(traceid, data);
       } else if ("PaymentFailedEvent".equals(notificationType)) {
         notificationService.notifyPaymentFailed(traceid, data);
+      } else if ("TechnicalError".equals(notificationType)) {
+        notificationService.notifyTechnicalError(traceid, data);
+      } else if ("SignupValidationFailedEvent".equals(notificationType)) {
+        notificationService.notifySignupValidationFailed(traceid, data);
+      } else if ("AccountActivationFailedEvent".equals(notificationType)) {
+        notificationService.notifyAccountActivationFailed(traceid, data);
+      } else if ("UpgradeRequestedEvent".equals(notificationType)) {
+        notificationService.notifyUpgradeRequested(traceid, data);
+      } else if ("UpgradeCompletedEvent".equals(notificationType)) {
+        notificationService.notifyUpgradeCompleted(traceid, data);
+      } else if ("UpgradePaymentFailedEvent".equals(notificationType)) {
+        notificationService.notifyUpgradePaymentFailed(traceid, data);
+      } else if ("AccountDeactivationRequestedEvent".equals(notificationType)) {
+        notificationService.notifyAccountDeactivationRequested(traceid, data);
+      } else if ("AccountDeactivatedEvent".equals(notificationType)) {
+        notificationService.notifyAccountDeactivated(traceid, data);
       } else {
         LOG.warn("Unknown notificationType '{}', using safe fallback (traceid={})", notificationType, traceid);
         return Map.of(
@@ -113,6 +141,16 @@ public class SendNotificationWorker {
 
   private String getString(Map<String, Object> vars, String key) {
     Object value = vars.get(key);
-    return value == null ? "" : value.toString();
+    if (value == null) {
+      LOG.warn("Missing process variable '{}' — check BPMN I/O mappings", key);
+      return "";
+    }
+    return value.toString();
+  }
+
+  private void copyIfPresent(Map<String, Object> vars, Map<String, Object> target, String key) {
+    if (vars.containsKey(key) && vars.get(key) != null) {
+      target.put(key, vars.get(key));
+    }
   }
 }

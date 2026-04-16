@@ -54,12 +54,9 @@
       "id": "Field_retryPayment",
       "key": "retryPayment",
       "defaultValue": false,
-      "description": "Check to retry payment, uncheck to cancel signup",
+      "description": "Check to retry payment. Leave unchecked to cancel signup.",
       "layout": {
         "row": "Row_3"
-      },
-      "validate": {
-        "required": true
       }
     }
   ],

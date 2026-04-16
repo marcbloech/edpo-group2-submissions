@@ -1,5 +1,7 @@
 package ch.unisg.worldpulse.notification.messages;
 
+import java.nio.charset.StandardCharsets;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +29,7 @@ public class MessageSender {
     try {
       String jsonMessage = objectMapper.writeValueAsString(m);
       ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC_NAME, jsonMessage);
-      record.headers().add("type", m.getType().getBytes());
+      record.headers().add("type", m.getType().getBytes(StandardCharsets.UTF_8));
       kafkaTemplate.send(record);
     } catch (Exception e) {
       throw new RuntimeException("Could not send message: " + e.getMessage(), e);

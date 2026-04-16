@@ -48,29 +48,12 @@
           <zeebe:input source="=traceid" target="traceid" />
           <zeebe:input source="=paymentAmount" target="paymentAmount" />
           <zeebe:input source="=transactionId" target="transactionId" />
-          <zeebe:input source="&#34;PaymentReceivedEvent&#34;" target="notificationType" />
+          <zeebe:input source="= &#34;PaymentReceivedEvent&#34;" target="notificationType" />
           <zeebe:output source="=notificationSent" target="notificationSent" />
           <zeebe:output source="=notificationId" target="notificationId" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_PaymentSuccess</bpmn:incoming>
-      <bpmn:outgoing>Flow_to_ActivateAccount</bpmn:outgoing>
-    </bpmn:serviceTask>
-    <bpmn:serviceTask id="Task_ActivateAccount" name="Activate User Account">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="activate-account" />
-        <zeebe:ioMapping>
-          <zeebe:input source="=userId" target="userId" />
-          <zeebe:input source="=email" target="email" />
-          <zeebe:input source="=name" target="name" />
-          <zeebe:input source="=tier" target="tier" />
-          <zeebe:input source="=traceid" target="traceid" />
-          <zeebe:output source="=accountActive" target="accountActive" />
-          <zeebe:output source="=activatedAt" target="activatedAt" />
-          <zeebe:output source="=apiToken" target="apiToken" />
-        </zeebe:ioMapping>
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_to_ActivateAccount</bpmn:incoming>
       <bpmn:outgoing>Flow_to_EndSuccess</bpmn:outgoing>
     </bpmn:serviceTask>
     <bpmn:userTask id="Task_RetryDecision" name="Decide: Retry Payment?">
@@ -94,7 +77,7 @@
           <zeebe:input source="=tier" target="tier" />
           <zeebe:input source="=traceid" target="traceid" />
           <zeebe:input source="=paymentAmount" target="paymentAmount" />
-          <zeebe:input source="&#34;PaymentFailedEvent&#34;" target="notificationType" />
+          <zeebe:input source="= &#34;PaymentFailedEvent&#34;" target="notificationType" />
           <zeebe:output source="=notificationSent" target="notificationSent" />
           <zeebe:output source="=notificationId" target="notificationId" />
         </zeebe:ioMapping>
@@ -110,7 +93,7 @@
           <zeebe:input source="=name" target="name" />
           <zeebe:input source="=tier" target="tier" />
           <zeebe:input source="=traceid" target="traceid" />
-          <zeebe:input source="&#34;TechnicalError&#34;" target="notificationType" />
+          <zeebe:input source="= &#34;TechnicalError&#34;" target="notificationType" />
           <zeebe:output source="=notificationSent" target="notificationSent" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
@@ -143,8 +126,7 @@
     <bpmn:sequenceFlow id="Flow_CancelSignup" name="No" sourceRef="Gateway_RetryDecision" targetRef="Task_NotifyPaymentFailed">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= retryPayment = false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_to_ActivateAccount" sourceRef="Task_NotifyPaymentSuccess" targetRef="Task_ActivateAccount" />
-    <bpmn:sequenceFlow id="Flow_to_EndSuccess" sourceRef="Task_ActivateAccount" targetRef="EndEvent_PaymentSuccess" />
+    <bpmn:sequenceFlow id="Flow_to_EndSuccess" sourceRef="Task_NotifyPaymentSuccess" targetRef="EndEvent_PaymentSuccess" />
     <bpmn:sequenceFlow id="Flow_to_EndFailed" sourceRef="Task_NotifyPaymentFailed" targetRef="EndEvent_PaymentFailed" />
     <bpmn:sequenceFlow id="Flow_PaymentTimeout_to_Error" sourceRef="BoundaryEvent_PaymentTimeout" targetRef="EndEvent_TechnicalError" />
     <bpmn:sequenceFlow id="Flow_PaymentError_to_Notification" sourceRef="BoundaryEvent_PaymentError" targetRef="Task_NotifyError" />
@@ -153,143 +135,132 @@
   <bpmndi:BPMNDiagram id="BPMNDiagram_Payment">
     <bpmndi:BPMNPlane id="BPMNPlane_Payment" bpmnElement="payment-process">
       <bpmndi:BPMNShape id="StartEvent_PaymentFlow_di" bpmnElement="StartEvent_PaymentFlow">
-        <dc:Bounds x="170" y="172" width="36" height="36" />
+        <dc:Bounds x="170" y="122" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="153" y="208" width="70" height="27" />
+          <dc:Bounds x="153" y="158" width="70" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_ProcessPayment_di" bpmnElement="Task_ProcessPayment">
-        <dc:Bounds x="260" y="150" width="130" height="80" />
+        <dc:Bounds x="260" y="100" width="130" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gateway_PaymentResult_di" bpmnElement="Gateway_PaymentResult" isMarkerVisible="true">
-        <dc:Bounds x="450" y="165" width="50" height="50" />
+        <dc:Bounds x="450" y="115" width="50" height="50" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="445" y="127.5" width="60" height="27" />
+          <dc:Bounds x="445" y="77.5" width="60" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_PaymentSuccess_di" bpmnElement="EndEvent_PaymentSuccess">
+        <dc:Bounds x="972" y="122" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="955" y="158" width="70" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_NotifyPaymentSuccess_di" bpmnElement="Task_NotifyPaymentSuccess">
-        <dc:Bounds x="560" y="150" width="160" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_ActivateAccount_di" bpmnElement="Task_ActivateAccount">
-        <dc:Bounds x="780" y="150" width="130" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_PaymentSuccess_di" bpmnElement="EndEvent_PaymentSuccess">
-        <dc:Bounds x="972" y="172" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="955" y="208" width="70" height="27" />
-        </bpmndi:BPMNLabel>
+        <dc:Bounds x="769" y="100" width="160" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_RetryDecision_di" bpmnElement="Task_RetryDecision">
-        <dc:Bounds x="395" y="290" width="160" height="80" />
+        <dc:Bounds x="520" y="200" width="160" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gateway_RetryDecision_di" bpmnElement="Gateway_RetryDecision" isMarkerVisible="true">
-        <dc:Bounds x="585" y="305" width="50" height="50" />
+        <dc:Bounds x="575" y="305" width="50" height="50" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="593.5" y="281" width="33" height="14" />
+          <dc:Bounds x="635" y="323" width="33" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_NotifyPaymentFailed_di" bpmnElement="Task_NotifyPaymentFailed">
-        <dc:Bounds x="760" y="440" width="170" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_NotifyError_di" bpmnElement="Task_NotifyError">
-        <dc:Bounds x="480" y="430" width="140" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_TechnicalError_di" bpmnElement="EndEvent_TechnicalError">
-        <dc:Bounds x="652" y="452" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="633" y="428" width="74" height="14" />
-        </bpmndi:BPMNLabel>
+        <dc:Bounds x="515" y="380" width="170" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_PaymentFailed_di" bpmnElement="EndEvent_PaymentFailed">
-        <dc:Bounds x="972" y="462" width="36" height="36" />
+        <dc:Bounds x="972" y="402" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="956" y="424.5" width="68" height="27" />
+          <dc:Bounds x="956" y="438" width="68" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BoundaryEvent_PaymentError_di" bpmnElement="BoundaryEvent_PaymentError">
-        <dc:Bounds x="352" y="212" width="36" height="36" />
+      <bpmndi:BPMNShape id="EndEvent_TechnicalError_di" bpmnElement="EndEvent_TechnicalError">
+        <dc:Bounds x="972" y="502" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="329" y="248" width="83" height="27" />
+          <dc:Bounds x="953" y="478" width="74" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyError_di" bpmnElement="Task_NotifyError">
+        <dc:Bounds x="530" y="480" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BoundaryEvent_PaymentError_di" bpmnElement="BoundaryEvent_PaymentError">
+        <dc:Bounds x="352" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="329" y="198" width="83" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BoundaryEvent_PaymentTimeout_di" bpmnElement="BoundaryEvent_PaymentTimeout">
-        <dc:Bounds x="272" y="212" width="36" height="36" />
+        <dc:Bounds x="272" y="162" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="247" y="248" width="86" height="27" />
+          <dc:Bounds x="247" y="198" width="86" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_to_ProcessPayment_di" bpmnElement="Flow_to_ProcessPayment">
-        <di:waypoint x="206" y="190" />
-        <di:waypoint x="260" y="190" />
+        <di:waypoint x="206" y="140" />
+        <di:waypoint x="260" y="140" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_to_PaymentGateway_di" bpmnElement="Flow_to_PaymentGateway">
-        <di:waypoint x="390" y="190" />
-        <di:waypoint x="450" y="190" />
+        <di:waypoint x="390" y="140" />
+        <di:waypoint x="450" y="140" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_PaymentSuccess_di" bpmnElement="Flow_PaymentSuccess">
-        <di:waypoint x="500" y="190" />
-        <di:waypoint x="560" y="190" />
+        <di:waypoint x="500" y="140" />
+        <di:waypoint x="769" y="140" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="521" y="165" width="18" height="14" />
+          <dc:Bounds x="626" y="115" width="18" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_PaymentFailed_di" bpmnElement="Flow_PaymentFailed">
-        <di:waypoint x="475" y="215" />
-        <di:waypoint x="475" y="290" />
+        <di:waypoint x="475" y="165" />
+        <di:waypoint x="475" y="240" />
+        <di:waypoint x="520" y="240" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="483" y="244" width="15" height="14" />
+          <dc:Bounds x="483" y="194" width="15" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_to_RetryGateway_di" bpmnElement="Flow_to_RetryGateway">
-        <di:waypoint x="555" y="330" />
-        <di:waypoint x="585" y="330" />
+        <di:waypoint x="600" y="280" />
+        <di:waypoint x="600" y="305" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_RetryPayment_di" bpmnElement="Flow_RetryPayment">
-        <di:waypoint x="635" y="330" />
-        <di:waypoint x="1040" y="330" />
-        <di:waypoint x="1040" y="80" />
-        <di:waypoint x="325" y="80" />
-        <di:waypoint x="325" y="150" />
+        <di:waypoint x="575" y="330" />
+        <di:waypoint x="325" y="330" />
+        <di:waypoint x="325" y="180" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="651" y="313" width="18" height="14" />
+          <dc:Bounds x="442" y="305" width="18" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_CancelSignup_di" bpmnElement="Flow_CancelSignup">
-        <di:waypoint x="610" y="355" />
-        <di:waypoint x="610" y="390" />
-        <di:waypoint x="740" y="390" />
-        <di:waypoint x="740" y="480" />
-        <di:waypoint x="760" y="480" />
+        <di:waypoint x="600" y="355" />
+        <di:waypoint x="600" y="380" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="657" y="371" width="15" height="14" />
+          <dc:Bounds x="612" y="355" width="15" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_to_ActivateAccount_di" bpmnElement="Flow_to_ActivateAccount">
-        <di:waypoint x="720" y="190" />
-        <di:waypoint x="780" y="190" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_to_EndSuccess_di" bpmnElement="Flow_to_EndSuccess">
-        <di:waypoint x="910" y="190" />
-        <di:waypoint x="972" y="190" />
+        <di:waypoint x="929" y="140" />
+        <di:waypoint x="972" y="140" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_to_EndFailed_di" bpmnElement="Flow_to_EndFailed">
-        <di:waypoint x="930" y="480" />
-        <di:waypoint x="972" y="480" />
+        <di:waypoint x="685" y="420" />
+        <di:waypoint x="972" y="420" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_PaymentTimeout_to_Error_di" bpmnElement="Flow_PaymentTimeout_to_Error">
-        <di:waypoint x="290" y="248" />
-        <di:waypoint x="290" y="540" />
-        <di:waypoint x="670" y="540" />
-        <di:waypoint x="670" y="488" />
+        <di:waypoint x="290" y="198" />
+        <di:waypoint x="290" y="590" />
+        <di:waypoint x="990" y="590" />
+        <di:waypoint x="990" y="538" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_PaymentError_to_Notification_di" bpmnElement="Flow_PaymentError_to_Notification">
-        <di:waypoint x="370" y="248" />
-        <di:waypoint x="370" y="470" />
-        <di:waypoint x="480" y="470" />
+        <di:waypoint x="370" y="198" />
+        <di:waypoint x="370" y="520" />
+        <di:waypoint x="530" y="520" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_PaymentError_to_Error_di" bpmnElement="Flow_PaymentError_to_Error">
-        <di:waypoint x="620" y="470" />
-        <di:waypoint x="652" y="470" />
+        <di:waypoint x="670" y="520" />
+        <di:waypoint x="972" y="520" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

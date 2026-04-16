@@ -1,0 +1,4 @@
+kafka-python-ng==2.2.3
+requests==2.31.0
+# atproto==0.0.46    # FUTURE: BlueSky AT Protocol client for firehose access
+# textblob==0.18.0   # FUTURE: Sentiment analysis for post classification

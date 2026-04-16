@@ -52,10 +52,10 @@ public class MessageListener {
       String userId = data.get("userId").asText();
 
       // Process the payment (simulated with random success/failure)
-      boolean success = paymentService.processPayment(userId, tier);
+      PaymentService.PaymentResult result = paymentService.processPayment(userId, tier);
 
       // Publish result as a NEW event
-      if (success) {
+      if (result.success()) {
         messageSender.send(new Message<>("PaymentReceivedEvent", traceid, data));
       } else {
         messageSender.send(new Message<>("PaymentFailedEvent", traceid, data));

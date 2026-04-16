@@ -1,15 +1,14 @@
 package ch.unisg.worldpulse.payment.workers;
 
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 
 import ch.unisg.worldpulse.payment.application.PaymentService;
 import ch.unisg.worldpulse.payment.messages.Message;
 import ch.unisg.worldpulse.payment.messages.MessageSender;
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.spring.client.annotation.JobWorker;
+import io.camunda.zeebe.spring.common.exception.ZeebeBpmnError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -32,33 +31,46 @@ public class ProcessPaymentWorker {
     Map<String, Object> vars = job.getVariablesAsMap();
     String userId = getString(vars, "userId");
     String tier = getString(vars, "tier");
+    String email = getString(vars, "email");
+    String name = getString(vars, "name");
     String traceid = getString(vars, "traceid");
+    boolean forcePaymentFailure = Boolean.TRUE.equals(vars.get("forcePaymentFailure"));
+    boolean forcePaymentError = Boolean.TRUE.equals(vars.get("forcePaymentError"));
 
-    boolean success = paymentService.processPayment(userId, tier);
+    if (forcePaymentError) {
+      LOG.info("Payment: FORCED ERROR for {} tier (user: {}, traceid: {})", tier, userId, traceid);
+      throw new ZeebeBpmnError("PAYMENT_ERROR", "Forced payment processing error for demo", Map.of());
+    }
 
-    long amount = getAmountForTier(tier);
-    String transactionId = success ? UUID.randomUUID().toString() : null;
+    PaymentService.PaymentResult payment;
+    if (forcePaymentFailure) {
+      long amount = "ENTERPRISE".equalsIgnoreCase(tier) ? 9900 : "PRO".equalsIgnoreCase(tier) ? 1900 : 0;
+      payment = new PaymentService.PaymentResult(false, amount, null);
+      LOG.info("Payment: FORCED FAILURE for {} tier (user: {}, traceid: {})", tier, userId, traceid);
+    } else {
+      payment = paymentService.processPayment(userId, tier);
+    }
 
-    // Publish business event to Kafka so downstream consumers can react
-    // independently of the Zeebe orchestration flow.
-    publishPaymentEvent(success, userId, tier, amount, transactionId, traceid);
+    publishPaymentEvent(payment, userId, tier, email, name, traceid);
 
     Map<String, Object> result = new HashMap<>();
-    result.put("paymentSuccess", success);
-    result.put("paymentAmount", amount);
-    result.put("transactionId", transactionId);
+    result.put("paymentSuccess", payment.success());
+    result.put("paymentAmount", payment.amount());
+    result.put("transactionId", payment.transactionId());
     return result;
   }
 
-  private void publishPaymentEvent(boolean success, String userId, String tier,
-                                   long amount, String transactionId, String traceid) {
+  private void publishPaymentEvent(PaymentService.PaymentResult payment, String userId,
+                                   String tier, String email, String name, String traceid) {
     Map<String, Object> payload = new HashMap<>();
     payload.put("userId", userId);
+    payload.put("email", email);
+    payload.put("name", name);
     payload.put("tier", tier);
-    payload.put("paymentAmount", amount);
-    payload.put("transactionId", transactionId);
+    payload.put("paymentAmount", payment.amount());
+    payload.put("transactionId", payment.transactionId());
 
-    String eventType = success ? "PaymentReceivedEvent" : "PaymentFailedEvent";
+    String eventType = payment.success() ? "PaymentReceivedEvent" : "PaymentFailedEvent";
 
     try {
       messageSender.send(new Message<>(eventType, traceid, payload));
@@ -69,20 +81,12 @@ public class ProcessPaymentWorker {
     }
   }
 
-  private long getAmountForTier(String tier) {
-    String normalizedTier = tier.toUpperCase(Locale.ROOT);
-    switch (normalizedTier) {
-      case "PRO":
-        return 1900;
-      case "ENTERPRISE":
-        return 9900;
-      default:
-        return 0;
-    }
-  }
-
   private String getString(Map<String, Object> vars, String key) {
     Object value = vars.get(key);
-    return value == null ? "" : value.toString();
+    if (value == null) {
+      LOG.warn("Missing process variable '{}' — check BPMN I/O mappings", key);
+      return "";
+    }
+    return value.toString();
   }
 }

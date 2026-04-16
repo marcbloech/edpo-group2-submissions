@@ -1,6 +1,8 @@
 // Adapted from Lab 4: kafka/java/choreography-alternative/payment/messages/MessageSender.java
 package ch.unisg.worldpulse.payment.messages;
 
+import java.nio.charset.StandardCharsets;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -35,7 +37,7 @@ public class MessageSender {
       // serialize to JSON, add type header for consumer filtering, send to Kafka
       String jsonMessage = objectMapper.writeValueAsString(m);
       ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC_NAME, jsonMessage);
-      record.headers().add("type", m.getType().getBytes());
+      record.headers().add("type", m.getType().getBytes(StandardCharsets.UTF_8));
       kafkaTemplate.send(record);
     } catch (Exception e) {
       throw new RuntimeException("Could not send message: " + e.getMessage(), e);

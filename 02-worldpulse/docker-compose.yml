@@ -6,30 +6,86 @@
 # View logs:         docker compose logs -f process
 services:
 
-  # --- Kafka broker (message infrastructure) ---
+  # --- Kafka cluster (3 brokers + 1 dedicated KRaft controller) ---
   # Uses KRaft mode (no separate ZooKeeper needed — Kafka manages itself).
-  # All 3 services connect to this broker to publish and consume events.
-  kafka:
+  # Three brokers with replication factor 3 for fault tolerance:
+  # if one broker dies, Kafka promotes a replica and services resume.
+
+  # Dedicated KRaft controller — manages cluster metadata only, no data.
+  controller:
     image: confluentinc/cp-kafka:latest
-    hostname: kafka                           # other containers reach Kafka at "kafka:9092"
+    hostname: controller
+    networks:
+      - worldpulse
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_LISTENERS: CONTROLLER://:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
+
+  kafka1:
+    image: confluentinc/cp-kafka:latest
+    hostname: kafka1
     networks:
       - worldpulse
     ports:
-      - "9092:9092"                           # internal (container-to-container) listener
-      - "29092:29092"                         # external (host machine) listener — for debugging with kafka-console-consumer
+      - "9092:9092"                           # host access for debugging (localhost:9092)
     environment:
-      # KRaft mode: this single node acts as both broker AND controller
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_NODE_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      # Three listeners: internal (9092), external/host (29092), controller (9093)
-      KAFKA_LISTENERS: PLAINTEXT://:9092,PLAINTEXT_HOST://:29092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      # Single-node setup: replication factor = 1 (no redundancy needed for dev)
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    depends_on:
+      - controller
+
+  kafka2:
+    image: confluentinc/cp-kafka:latest
+    hostname: kafka2
+    networks:
+      - worldpulse
+    ports:
+      - "9094:9094"                           # host access for debugging (localhost:9094)
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: INTERNAL://:29094,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2:29094,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    depends_on:
+      - controller
+
+  kafka3:
+    image: confluentinc/cp-kafka:latest
+    hostname: kafka3
+    networks:
+      - worldpulse
+    ports:
+      - "9096:9096"                           # host access for debugging (localhost:9096)
+    environment:
+      KAFKA_NODE_ID: 4
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: INTERNAL://:29096,EXTERNAL://:9096
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka3:29096,EXTERNAL://localhost:9096
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    depends_on:
+      - controller
 
   # --- Signup service (entry point) ---
   # Exposes POST /api/signup → publishes SignupRequestedEvent to Kafka
@@ -42,14 +98,17 @@ services:
     ports:
       - "8091:8091"                           # access via http://localhost:8091/api/signup
     depends_on:
-      - kafka                                 # wait for Kafka to start first
+      - kafka1
     environment:
-      # This overrides the bootstrap-servers in application.properties
-      # so the service connects to the Kafka container (not localhost)
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
-      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
-      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - CAMUNDA_CLIENT_MODE=${CAMUNDA_CLIENT_MODE:-selfManaged}
+      - CAMUNDA_CLUSTER_ID=${CAMUNDA_CLUSTER_ID:-}
+      - CAMUNDA_CLUSTER_REGION=${CAMUNDA_CLUSTER_REGION:-}
+      - CAMUNDA_CLOUD_BASE_URL=${CAMUNDA_CLOUD_BASE_URL:-}
+      - CAMUNDA_CLIENT_ID=${CAMUNDA_CLIENT_ID:-}
+      - CAMUNDA_CLIENT_SECRET=${CAMUNDA_CLIENT_SECRET:-}
+      - CAMUNDA_OAUTH_URL=${CAMUNDA_OAUTH_URL:-}
+      - ZEEBE_GRPC_ADDRESS=${ZEEBE_GRPC_ADDRESS:-http://zeebe:26500}
 
   # --- Payment service (reacts to signups) ---
   # Listens for SignupRequestedEvent → processes payment → publishes PaymentReceived/FailedEvent
@@ -62,12 +121,17 @@ services:
     ports:
       - "8093:8093"
     depends_on:
-      - kafka
+      - kafka1
     environment:
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
-      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
-      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - CAMUNDA_CLIENT_MODE=${CAMUNDA_CLIENT_MODE:-selfManaged}
+      - CAMUNDA_CLUSTER_ID=${CAMUNDA_CLUSTER_ID:-}
+      - CAMUNDA_CLUSTER_REGION=${CAMUNDA_CLUSTER_REGION:-}
+      - CAMUNDA_CLOUD_BASE_URL=${CAMUNDA_CLOUD_BASE_URL:-}
+      - CAMUNDA_CLIENT_ID=${CAMUNDA_CLIENT_ID:-}
+      - CAMUNDA_CLIENT_SECRET=${CAMUNDA_CLIENT_SECRET:-}
+      - CAMUNDA_OAUTH_URL=${CAMUNDA_OAUTH_URL:-}
+      - ZEEBE_GRPC_ADDRESS=${ZEEBE_GRPC_ADDRESS:-http://zeebe:26500}
 
   # --- Notification service (Exercise 2: Event Notification pattern) ---
   # Listens to ALL events on the "worldpulse" topic and logs simulated emails.
@@ -81,12 +145,17 @@ services:
     ports:
       - "8094:8094"
     depends_on:
-      - kafka
+      - kafka1
     environment:
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
-      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
-      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - CAMUNDA_CLIENT_MODE=${CAMUNDA_CLIENT_MODE:-selfManaged}
+      - CAMUNDA_CLUSTER_ID=${CAMUNDA_CLUSTER_ID:-}
+      - CAMUNDA_CLUSTER_REGION=${CAMUNDA_CLUSTER_REGION:-}
+      - CAMUNDA_CLOUD_BASE_URL=${CAMUNDA_CLOUD_BASE_URL:-}
+      - CAMUNDA_CLIENT_ID=${CAMUNDA_CLIENT_ID:-}
+      - CAMUNDA_CLIENT_SECRET=${CAMUNDA_CLIENT_SECRET:-}
+      - CAMUNDA_OAUTH_URL=${CAMUNDA_OAUTH_URL:-}
+      - ZEEBE_GRPC_ADDRESS=${ZEEBE_GRPC_ADDRESS:-http://zeebe:26500}
 
   # --- Elasticsearch (required by Zeebe for exporting process data) ---
   elasticsearch:
@@ -163,6 +232,50 @@ services:
       - elasticsearch
       - zeebe
 
+  # --- Connectors runtime (executes out-of-the-box connectors like Slack) ---
+  connectors:
+    image: camunda/connectors-bundle:8.5.11
+    hostname: connectors
+    networks:
+      - worldpulse
+    ports:
+      - "8089:8080"
+    environment:
+      - ZEEBE_CLIENT_BROKER_GATEWAY-ADDRESS=zeebe:26500
+      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
+      - CAMUNDA_CONNECTOR_POLLING_ENABLED=false
+      - CAMUNDA_CONNECTOR_WEBHOOK_ENABLED=false
+      - SLACK_OAUTH_TOKEN=xoxb-10925461763601-10897122903191-nBUN2fLAOB4FgmUK9THStwOb
+      - SLACK_CHANNEL=C0ATNQPD188
+    depends_on:
+      - zeebe
+
+  # --- Market Scanner (Python — financial market monitoring) ---
+  # Publishes MarketAlertEvent to Kafka when significant price movements are detected.
+  # V1: fires a mock alert within 2-10 seconds of startup.
+  market-scanner:
+    build: ./market-scanner
+    container_name: market-scanner
+    networks:
+      - worldpulse
+    depends_on:
+      - kafka1
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+
+  # --- BlueSky Scanner (Python — social media monitoring) ---
+  # Publishes SocialTrendEvent to Kafka when trending topics or sentiment spikes are detected.
+  # V1: fires a mock alert within 2-10 seconds of startup.
+  bluesky-scanner:
+    build: ./bluesky-scanner
+    container_name: bluesky-scanner
+    networks:
+      - worldpulse
+    depends_on:
+      - kafka1
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+
   # --- Process service (Kafka → Zeebe bridge) ---
   # Listens for SignupRequestedEvent on Kafka, starts BPMN process instances in Zeebe
   process:
@@ -175,15 +288,19 @@ services:
     ports:
       - "8095:8095"
     depends_on:
-      - kafka
+      - kafka1
       - zeebe
     environment:
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
       - CAMUNDA_CLIENT_ZEEBE_ENABLED=true
-      - CAMUNDA_CLIENT_ZEEBE_GRPCADDRESS=http://zeebe:26500
-      - CAMUNDA_CLIENT_MODE=selfManaged
-      - ZEEBE_CLIENT_BROKER_GATEWAYADDRESS=zeebe:26500
-      - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
+      - ZEEBE_GRPC_ADDRESS=${ZEEBE_GRPC_ADDRESS:-http://zeebe:26500}
+      - CAMUNDA_CLIENT_MODE=${CAMUNDA_CLIENT_MODE:-selfManaged}
+      - CAMUNDA_CLUSTER_ID=${CAMUNDA_CLUSTER_ID:-}
+      - CAMUNDA_CLUSTER_REGION=${CAMUNDA_CLUSTER_REGION:-}
+      - CAMUNDA_CLOUD_BASE_URL=${CAMUNDA_CLOUD_BASE_URL:-}
+      - CAMUNDA_CLIENT_ID=${CAMUNDA_CLIENT_ID:-}
+      - CAMUNDA_CLIENT_SECRET=${CAMUNDA_CLIENT_SECRET:-}
+      - CAMUNDA_OAUTH_URL=${CAMUNDA_OAUTH_URL:-}
 
 # All containers share this network so they can reach each other by hostname
 networks:

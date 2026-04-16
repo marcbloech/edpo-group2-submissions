@@ -1,21 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
-                  id="Definitions_Signup"
-                  targetNamespace="http://bpmn.io/schema/bpmn"
-                  exporter="Camunda Modeler"
-                  exporterVersion="5.45.0">
-
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_Signup" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.45.0">
+  <bpmn:error id="Error_ValidationFailure" name="SignupValidationFailure" errorCode="SIGNUP_VALIDATION_ERROR" />
+  <bpmn:error id="Error_ActivationFailure" name="ActivationFailure" errorCode="ACTIVATION_ERROR" />
+  <bpmn:error id="Error_CompensatedFailure" name="CompensatedFailure" errorCode="COMPENSATED_FAILURE" />
   <bpmn:process id="signup-process" name="WorldPulse Signup Process" isExecutable="true">
-
     <bpmn:startEvent id="StartEvent_SignupRequest" name="Signup Request Received">
       <bpmn:outgoing>Flow_to_ValidateSignup</bpmn:outgoing>
     </bpmn:startEvent>
-
     <bpmn:serviceTask id="Task_ValidateSignup" name="Validate Signup Data">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="validate-signup" />
@@ -23,16 +14,21 @@
           <zeebe:input source="=name" target="name" />
           <zeebe:input source="=email" target="email" />
           <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
           <zeebe:output source="=userId" target="userId" />
           <zeebe:output source="=traceid" target="traceid" />
           <zeebe:output source="=source" target="source" />
+          <zeebe:output source="=tier" target="tier" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_to_ValidateSignup</bpmn:incoming>
-      <bpmn:outgoing>Flow_to_InitialNotification</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_ParallelSplit</bpmn:outgoing>
     </bpmn:serviceTask>
-
-    <bpmn:serviceTask id="Task_SendInitialNotification" name="Send Initial Processing Notification">
+    <bpmn:boundaryEvent id="BoundaryEvent_ValidationFailure" name="Signup Validation Failed" attachedToRef="Task_ValidateSignup">
+      <bpmn:outgoing>Flow_ValidationFailure_to_Notify</bpmn:outgoing>
+      <bpmn:errorEventDefinition errorRef="Error_ValidationFailure" />
+    </bpmn:boundaryEvent>
+    <bpmn:sendTask id="Task_NotifyValidationFailed" name="Notify Validation Failure">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="send-notification" />
         <zeebe:ioMapping>
@@ -40,22 +36,61 @@
           <zeebe:input source="=name" target="name" />
           <zeebe:input source="=tier" target="tier" />
           <zeebe:input source="=traceid" target="traceid" />
-          <zeebe:input source="= &quot;SignupRequestedEvent&quot;" target="notificationType" />
+          <zeebe:input source="=validationError" target="validationError" />
+          <zeebe:input source="=&#34;SignupValidationFailedEvent&#34;" target="notificationType" />
           <zeebe:output source="=notificationSent" target="notificationSent" />
           <zeebe:output source="=notificationId" target="notificationId" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_to_InitialNotification</bpmn:incoming>
-      <bpmn:outgoing>Flow_to_CheckTier</bpmn:outgoing>
+      <bpmn:incoming>Flow_ValidationFailure_to_Notify</bpmn:incoming>
+      <bpmn:outgoing>Flow_NotifyValidationFailed_to_End</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="EndEvent_ValidationFailed" name="Signup Validation Failed">
+      <bpmn:incoming>Flow_NotifyValidationFailed_to_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:parallelGateway id="Gateway_ParallelSplit" name="Parallelize Initial Steps">
+      <bpmn:incoming>Flow_to_ParallelSplit</bpmn:incoming>
+      <bpmn:outgoing>Flow_Parallel_to_InitialNotification</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Parallel_to_AssessEligibility</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:sendTask id="Task_SendInitialNotification" name="Send Initial Processing Notification">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=&#34;SignupRequestedEvent&#34;" target="notificationType" />
+          <zeebe:output source="=notificationSent" target="notificationSent" />
+          <zeebe:output source="=notificationId" target="notificationId" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Parallel_to_InitialNotification</bpmn:incoming>
+      <bpmn:outgoing>Flow_InitialNotification_to_ParallelJoin</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:serviceTask id="Task_AssessPaymentEligibility" name="Assess Payment Eligibility">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="assess-payment-eligibility" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:output source="=paymentRequired" target="paymentRequired" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Parallel_to_AssessEligibility</bpmn:incoming>
+      <bpmn:outgoing>Flow_AssessEligibility_to_ParallelJoin</bpmn:outgoing>
     </bpmn:serviceTask>
-
+    <bpmn:parallelGateway id="Gateway_ParallelJoin" name="Join Initial Steps">
+      <bpmn:incoming>Flow_InitialNotification_to_ParallelJoin</bpmn:incoming>
+      <bpmn:incoming>Flow_AssessEligibility_to_ParallelJoin</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_CheckTier</bpmn:outgoing>
+    </bpmn:parallelGateway>
     <bpmn:exclusiveGateway id="Gateway_CheckTier" name="Payment Required?">
       <bpmn:incoming>Flow_to_CheckTier</bpmn:incoming>
       <bpmn:outgoing>Flow_PaymentRequired</bpmn:outgoing>
       <bpmn:outgoing>Flow_FreeTier</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-
-    <bpmn:serviceTask id="Task_NotifyFreeTier" name="Send Welcome Notification">
+    <bpmn:sendTask id="Task_NotifyFreeTier" name="Send Welcome Notification">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="send-notification" />
         <zeebe:ioMapping>
@@ -63,16 +98,15 @@
           <zeebe:input source="=name" target="name" />
           <zeebe:input source="=tier" target="tier" />
           <zeebe:input source="=traceid" target="traceid" />
-          <zeebe:input source="= &quot;SignupRequestedEvent&quot;" target="notificationType" />
+          <zeebe:input source="=&#34;SignupRequestedEvent&#34;" target="notificationType" />
           <zeebe:output source="=notificationSent" target="notificationSent" />
           <zeebe:output source="=notificationId" target="notificationId" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_FreeTier</bpmn:incoming>
-      <bpmn:outgoing>Flow_to_ActivateAccountFree</bpmn:outgoing>
-    </bpmn:serviceTask>
-
-    <bpmn:serviceTask id="Task_ActivateAccount" name="Activate User Account">
+      <bpmn:outgoing>Flow_FreeTier_to_ActivateAccount</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:serviceTask id="Task_ActivateAccountFree" name="Activate User Account (Free)">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="activate-account" />
         <zeebe:ioMapping>
@@ -81,111 +115,408 @@
           <zeebe:input source="=name" target="name" />
           <zeebe:input source="=tier" target="tier" />
           <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=forceActivationFailure" target="forceActivationFailure" />
           <zeebe:output source="=accountActive" target="accountActive" />
           <zeebe:output source="=activatedAt" target="activatedAt" />
           <zeebe:output source="=apiToken" target="apiToken" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_to_ActivateAccountFree</bpmn:incoming>
-      <bpmn:outgoing>Flow_to_EndSuccess</bpmn:outgoing>
+      <bpmn:incoming>Flow_FreeTier_to_ActivateAccount</bpmn:incoming>
+      <bpmn:outgoing>Flow_FreeActivation_to_EndSuccess</bpmn:outgoing>
     </bpmn:serviceTask>
-
-    <bpmn:callActivity id="CallActivity_PaymentProcess" name="Execute Payment Process">
+    <bpmn:boundaryEvent id="BoundaryEvent_FreeActivationFailure" name="Free Tier Activation Failed" attachedToRef="Task_ActivateAccountFree">
+      <bpmn:outgoing>Flow_FreeActivationFailure_to_Notify</bpmn:outgoing>
+      <bpmn:errorEventDefinition errorRef="Error_ActivationFailure" />
+    </bpmn:boundaryEvent>
+    <bpmn:sendTask id="Task_NotifyActivationFailedFree" name="Notify Activation Failure (No Compensation Needed)">
       <bpmn:extensionElements>
-        <zeebe:calledElement processId="payment-process" propagateAllParentVariables="true" propagateAllChildVariables="true" />
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=true" target="refundSkipped" />
+          <zeebe:input source="=&#34;AccountActivationFailedEvent&#34;" target="notificationType" />
+          <zeebe:output source="=notificationSent" target="notificationSent" />
+          <zeebe:output source="=notificationId" target="notificationId" />
+        </zeebe:ioMapping>
       </bpmn:extensionElements>
+      <bpmn:incoming>Flow_FreeActivationFailure_to_Notify</bpmn:incoming>
+      <bpmn:outgoing>Flow_FreeActivationFailed_to_End</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:endEvent id="EndEvent_FreeActivationFailed" name="Signup Failed (Free Tier Activation)">
+      <bpmn:incoming>Flow_FreeActivationFailed_to_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="SubProcess_PaidSignupTransaction" name="Paid Signup Transaction (Payment + Post-Payment Steps)">
       <bpmn:incoming>Flow_PaymentRequired</bpmn:incoming>
-      <bpmn:outgoing>Flow_to_EndPaidDelegated</bpmn:outgoing>
-    </bpmn:callActivity>
-
+      <bpmn:outgoing>Flow_PaidFlow_to_EndSuccess</bpmn:outgoing>
+      <bpmn:startEvent id="StartEvent_PaidFlow">
+        <bpmn:outgoing>Flow_PaidStart_to_PaymentCall</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:callActivity id="CallActivity_PaymentProcess" name="Execute Payment Process">
+        <bpmn:extensionElements>
+          <zeebe:calledElement processId="payment-process" propagateAllChildVariables="true" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_PaidStart_to_PaymentCall</bpmn:incoming>
+        <bpmn:outgoing>Flow_PaymentCall_to_ActivatePaidAccount</bpmn:outgoing>
+      </bpmn:callActivity>
+      <bpmn:boundaryEvent id="BoundaryEvent_PaymentCompensation" attachedToRef="CallActivity_PaymentProcess">
+        <bpmn:compensateEventDefinition id="CompensateEventDefinition_Payment" />
+      </bpmn:boundaryEvent>
+      <bpmn:serviceTask id="Task_RefundPayment" name="Refund Payment" isForCompensation="true">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="refund-payment" />
+          <zeebe:ioMapping>
+            <zeebe:input source="=userId" target="userId" />
+            <zeebe:input source="=email" target="email" />
+            <zeebe:input source="=name" target="name" />
+            <zeebe:input source="=tier" target="tier" />
+            <zeebe:input source="=traceid" target="traceid" />
+            <zeebe:input source="=paymentAmount" target="paymentAmount" />
+            <zeebe:input source="=transactionId" target="transactionId" />
+            <zeebe:output source="=refundSuccess" target="refundSuccess" />
+            <zeebe:output source="=refundSkipped" target="refundSkipped" />
+            <zeebe:output source="=refundTransactionId" target="refundTransactionId" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
+      </bpmn:serviceTask>
+      <bpmn:serviceTask id="Task_ActivateAccountPaid" name="Activate User Account (Paid)">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="activate-account" />
+          <zeebe:ioMapping>
+            <zeebe:input source="=userId" target="userId" />
+            <zeebe:input source="=email" target="email" />
+            <zeebe:input source="=name" target="name" />
+            <zeebe:input source="=tier" target="tier" />
+            <zeebe:input source="=traceid" target="traceid" />
+            <zeebe:input source="=forceActivationFailure" target="forceActivationFailure" />
+            <zeebe:output source="=accountActive" target="accountActive" />
+            <zeebe:output source="=activatedAt" target="activatedAt" />
+            <zeebe:output source="=apiToken" target="apiToken" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_PaymentCall_to_ActivatePaidAccount</bpmn:incoming>
+        <bpmn:outgoing>Flow_ActivatePaidAccount_to_End</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:boundaryEvent id="BoundaryEvent_PaidActivationError" name="Activation Failed" attachedToRef="Task_ActivateAccountPaid">
+        <bpmn:outgoing>Flow_ActivationError_to_CompensateThrow</bpmn:outgoing>
+        <bpmn:errorEventDefinition errorRef="Error_ActivationFailure" />
+      </bpmn:boundaryEvent>
+      <bpmn:intermediateThrowEvent id="ThrowEvent_CompensatePayment" name="Trigger Payment Compensation">
+        <bpmn:incoming>Flow_ActivationError_to_CompensateThrow</bpmn:incoming>
+        <bpmn:outgoing>Flow_CompensateThrow_to_Notify</bpmn:outgoing>
+        <bpmn:compensateEventDefinition id="CompensateEventDefinition_Throw" activityRef="CallActivity_PaymentProcess" />
+      </bpmn:intermediateThrowEvent>
+      <bpmn:sendTask id="Task_NotifyActivationFailed" name="Notify Activation Failure">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="send-notification" />
+          <zeebe:ioMapping>
+            <zeebe:input source="=email" target="email" />
+            <zeebe:input source="=name" target="name" />
+            <zeebe:input source="=tier" target="tier" />
+            <zeebe:input source="=traceid" target="traceid" />
+            <zeebe:input source="=paymentAmount" target="paymentAmount" />
+            <zeebe:input source="=transactionId" target="transactionId" />
+            <zeebe:input source="=refundSuccess" target="refundSuccess" />
+            <zeebe:input source="=refundSkipped" target="refundSkipped" />
+            <zeebe:input source="=refundTransactionId" target="refundTransactionId" />
+            <zeebe:input source="=&#34;AccountActivationFailedEvent&#34;" target="notificationType" />
+            <zeebe:output source="=notificationSent" target="notificationSent" />
+            <zeebe:output source="=notificationId" target="notificationId" />
+          </zeebe:ioMapping>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_CompensateThrow_to_Notify</bpmn:incoming>
+        <bpmn:outgoing>Flow_NotifyActivationFailed_to_EndCompensated</bpmn:outgoing>
+      </bpmn:sendTask>
+      <bpmn:endEvent id="EndEvent_PaidFlowSuccess">
+        <bpmn:incoming>Flow_ActivatePaidAccount_to_End</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="EndEvent_ActivationCompensated" name="Signup Failed With Compensation">
+        <bpmn:incoming>Flow_NotifyActivationFailed_to_EndCompensated</bpmn:incoming>
+        <bpmn:errorEventDefinition errorRef="Error_CompensatedFailure" />
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_PaidStart_to_PaymentCall" sourceRef="StartEvent_PaidFlow" targetRef="CallActivity_PaymentProcess" />
+      <bpmn:sequenceFlow id="Flow_PaymentCall_to_ActivatePaidAccount" sourceRef="CallActivity_PaymentProcess" targetRef="Task_ActivateAccountPaid" />
+      <bpmn:sequenceFlow id="Flow_ActivatePaidAccount_to_End" sourceRef="Task_ActivateAccountPaid" targetRef="EndEvent_PaidFlowSuccess" />
+      <bpmn:sequenceFlow id="Flow_ActivationError_to_CompensateThrow" sourceRef="BoundaryEvent_PaidActivationError" targetRef="ThrowEvent_CompensatePayment" />
+      <bpmn:sequenceFlow id="Flow_CompensateThrow_to_Notify" sourceRef="ThrowEvent_CompensatePayment" targetRef="Task_NotifyActivationFailed" />
+      <bpmn:sequenceFlow id="Flow_NotifyActivationFailed_to_EndCompensated" sourceRef="Task_NotifyActivationFailed" targetRef="EndEvent_ActivationCompensated" />
+      <bpmn:association id="Association_CompensatePayment" associationDirection="One" sourceRef="BoundaryEvent_PaymentCompensation" targetRef="Task_RefundPayment" />
+    </bpmn:subProcess>
+    <bpmn:boundaryEvent id="BoundaryEvent_CompensatedFailure" name="Paid Signup Failed (Compensated)" attachedToRef="SubProcess_PaidSignupTransaction">
+      <bpmn:outgoing>Flow_CompensatedFailure_to_End</bpmn:outgoing>
+      <bpmn:errorEventDefinition errorRef="Error_CompensatedFailure" />
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="EndEvent_PaidSignupFailed" name="Signup Failed (Compensated)">
+      <bpmn:incoming>Flow_CompensatedFailure_to_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_CompensatedFailure_to_End" sourceRef="BoundaryEvent_CompensatedFailure" targetRef="EndEvent_PaidSignupFailed" />
     <bpmn:endEvent id="EndEvent_SignupSuccess" name="Signup Completed Successfully">
-      <bpmn:incoming>Flow_to_EndSuccess</bpmn:incoming>
+      <bpmn:incoming>Flow_FreeActivation_to_EndSuccess</bpmn:incoming>
+      <bpmn:incoming>Flow_PaidFlow_to_EndSuccess</bpmn:incoming>
     </bpmn:endEvent>
-
-    <bpmn:endEvent id="EndEvent_PaidDelegated" name="Delegated To Payment Process">
-      <bpmn:incoming>Flow_to_EndPaidDelegated</bpmn:incoming>
-    </bpmn:endEvent>
-
     <bpmn:sequenceFlow id="Flow_to_ValidateSignup" sourceRef="StartEvent_SignupRequest" targetRef="Task_ValidateSignup" />
-    <bpmn:sequenceFlow id="Flow_to_InitialNotification" sourceRef="Task_ValidateSignup" targetRef="Task_SendInitialNotification" />
-    <bpmn:sequenceFlow id="Flow_to_CheckTier" sourceRef="Task_SendInitialNotification" targetRef="Gateway_CheckTier" />
-
-    <bpmn:sequenceFlow id="Flow_PaymentRequired" name="PRO or ENTERPRISE" sourceRef="Gateway_CheckTier" targetRef="CallActivity_PaymentProcess">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= tier = "PRO" or tier = "ENTERPRISE"</bpmn:conditionExpression>
+    <bpmn:sequenceFlow id="Flow_ValidationFailure_to_Notify" sourceRef="BoundaryEvent_ValidationFailure" targetRef="Task_NotifyValidationFailed" />
+    <bpmn:sequenceFlow id="Flow_NotifyValidationFailed_to_End" sourceRef="Task_NotifyValidationFailed" targetRef="EndEvent_ValidationFailed" />
+    <bpmn:sequenceFlow id="Flow_to_ParallelSplit" sourceRef="Task_ValidateSignup" targetRef="Gateway_ParallelSplit" />
+    <bpmn:sequenceFlow id="Flow_Parallel_to_InitialNotification" sourceRef="Gateway_ParallelSplit" targetRef="Task_SendInitialNotification" />
+    <bpmn:sequenceFlow id="Flow_Parallel_to_AssessEligibility" sourceRef="Gateway_ParallelSplit" targetRef="Task_AssessPaymentEligibility" />
+    <bpmn:sequenceFlow id="Flow_InitialNotification_to_ParallelJoin" sourceRef="Task_SendInitialNotification" targetRef="Gateway_ParallelJoin" />
+    <bpmn:sequenceFlow id="Flow_AssessEligibility_to_ParallelJoin" sourceRef="Task_AssessPaymentEligibility" targetRef="Gateway_ParallelJoin" />
+    <bpmn:sequenceFlow id="Flow_to_CheckTier" sourceRef="Gateway_ParallelJoin" targetRef="Gateway_CheckTier" />
+    <bpmn:sequenceFlow id="Flow_PaymentRequired" name="Yes" sourceRef="Gateway_CheckTier" targetRef="SubProcess_PaidSignupTransaction">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= paymentRequired = true</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-
-    <bpmn:sequenceFlow id="Flow_FreeTier" name="FREE" sourceRef="Gateway_CheckTier" targetRef="Task_NotifyFreeTier">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= tier = "FREE"</bpmn:conditionExpression>
+    <bpmn:sequenceFlow id="Flow_FreeTier" name="No" sourceRef="Gateway_CheckTier" targetRef="Task_NotifyFreeTier">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= paymentRequired = false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-
-    <bpmn:sequenceFlow id="Flow_to_ActivateAccountFree" sourceRef="Task_NotifyFreeTier" targetRef="Task_ActivateAccount" />
-    <bpmn:sequenceFlow id="Flow_to_EndSuccess" sourceRef="Task_ActivateAccount" targetRef="EndEvent_SignupSuccess" />
-    <bpmn:sequenceFlow id="Flow_to_EndPaidDelegated" sourceRef="CallActivity_PaymentProcess" targetRef="EndEvent_PaidDelegated" />
-
+    <bpmn:sequenceFlow id="Flow_FreeTier_to_ActivateAccount" sourceRef="Task_NotifyFreeTier" targetRef="Task_ActivateAccountFree" />
+    <bpmn:sequenceFlow id="Flow_FreeActivation_to_EndSuccess" sourceRef="Task_ActivateAccountFree" targetRef="EndEvent_SignupSuccess" />
+    <bpmn:sequenceFlow id="Flow_FreeActivationFailure_to_Notify" sourceRef="BoundaryEvent_FreeActivationFailure" targetRef="Task_NotifyActivationFailedFree" />
+    <bpmn:sequenceFlow id="Flow_FreeActivationFailed_to_End" sourceRef="Task_NotifyActivationFailedFree" targetRef="EndEvent_FreeActivationFailed" />
+    <bpmn:sequenceFlow id="Flow_PaidFlow_to_EndSuccess" sourceRef="SubProcess_PaidSignupTransaction" targetRef="EndEvent_SignupSuccess" />
   </bpmn:process>
-
-  <bpmndi:BPMNDiagram id="BPMNDiagram_Signup">
-    <bpmndi:BPMNPlane id="BPMNPlane_Signup" bpmnElement="signup-process">
+  <bpmndi:BPMNDiagram id="BPMNDiagram_signup-process">
+    <bpmndi:BPMNPlane id="BPMNPlane_signup-process" bpmnElement="signup-process">
       <bpmndi:BPMNShape id="StartEvent_SignupRequest_di" bpmnElement="StartEvent_SignupRequest">
-        <dc:Bounds x="120" y="222" width="36" height="36" />
+        <dc:Bounds x="177" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="156" y="168" width="79" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_ValidateSignup_di" bpmnElement="Task_ValidateSignup">
-        <dc:Bounds x="210" y="200" width="120" height="80" />
+        <dc:Bounds x="295" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyValidationFailed_di" bpmnElement="Task_NotifyValidationFailed">
+        <dc:Bounds x="445" y="390" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_ValidationFailed_di" bpmnElement="EndEvent_ValidationFailed">
+        <dc:Bounds x="627" y="412" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="603" y="448" width="85" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ParallelSplit_di" bpmnElement="Gateway_ParallelSplit">
+        <dc:Bounds x="770" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="755" y="175" width="80" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_SendInitialNotification_di" bpmnElement="Task_SendInitialNotification">
-        <dc:Bounds x="390" y="200" width="140" height="80" />
+        <dc:Bounds x="895" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AssessPaymentEligibility_di" bpmnElement="Task_AssessPaymentEligibility">
+        <dc:Bounds x="895" y="390" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_ParallelJoin_di" bpmnElement="Gateway_ParallelJoin">
+        <dc:Bounds x="1070" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1054" y="101" width="81" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gateway_CheckTier_di" bpmnElement="Gateway_CheckTier" isMarkerVisible="true">
-        <dc:Bounds x="590" y="215" width="50" height="50" />
+        <dc:Bounds x="1205" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1204" y="87.5" width="51" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_NotifyFreeTier_di" bpmnElement="Task_NotifyFreeTier">
-        <dc:Bounds x="710" y="80" width="140" height="80" />
+        <dc:Bounds x="1345" y="510" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Task_ActivateAccount_di" bpmnElement="Task_ActivateAccount">
-        <dc:Bounds x="920" y="80" width="130" height="80" />
+      <bpmndi:BPMNShape id="Task_ActivateAccountFree_di" bpmnElement="Task_ActivateAccountFree">
+        <dc:Bounds x="1495" y="510" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyActivationFailedFree_di" bpmnElement="Task_NotifyActivationFailedFree">
+        <dc:Bounds x="1645" y="650" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_FreeActivationFailed_di" bpmnElement="EndEvent_FreeActivationFailed">
+        <dc:Bounds x="1827" y="672" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1811" y="708" width="68" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SubProcess_PaidSignupTransaction_di" bpmnElement="SubProcess_PaidSignupTransaction" isExpanded="true">
+        <dc:Bounds x="1320" y="80" width="700" height="290" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_PaidFlow_di" bpmnElement="StartEvent_PaidFlow">
+        <dc:Bounds x="1340" y="132" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="CallActivity_PaymentProcess_di" bpmnElement="CallActivity_PaymentProcess">
-        <dc:Bounds x="710" y="200" width="170" height="80" />
+        <dc:Bounds x="1420" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RefundPayment_di" bpmnElement="Task_RefundPayment">
+        <dc:Bounds x="1500" y="230" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ActivateAccountPaid_di" bpmnElement="Task_ActivateAccountPaid">
+        <dc:Bounds x="1580" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="ThrowEvent_CompensatePayment_di" bpmnElement="ThrowEvent_CompensatePayment">
+        <dc:Bounds x="1682" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1660" y="315" width="81" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyActivationFailed_di" bpmnElement="Task_NotifyActivationFailed">
+        <dc:Bounds x="1760" y="250" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_ActivationCompensated_di" bpmnElement="EndEvent_ActivationCompensated">
+        <dc:Bounds x="1920" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1903" y="315" width="71" height="40" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_PaidFlowSuccess_di" bpmnElement="EndEvent_PaidFlowSuccess">
+        <dc:Bounds x="1920" y="132" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BoundaryEvent_PaidActivationError_di" bpmnElement="BoundaryEvent_PaidActivationError">
+        <dc:Bounds x="1612" y="172" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1590" y="208" width="81" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BoundaryEvent_PaymentCompensation_di" bpmnElement="BoundaryEvent_PaymentCompensation">
+        <dc:Bounds x="1452" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_PaidStart_to_PaymentCall_di" bpmnElement="Flow_PaidStart_to_PaymentCall">
+        <di:waypoint x="1376" y="150" />
+        <di:waypoint x="1420" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_PaymentCall_to_ActivatePaidAccount_di" bpmnElement="Flow_PaymentCall_to_ActivatePaidAccount">
+        <di:waypoint x="1520" y="150" />
+        <di:waypoint x="1580" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ActivatePaidAccount_to_End_di" bpmnElement="Flow_ActivatePaidAccount_to_End">
+        <di:waypoint x="1680" y="150" />
+        <di:waypoint x="1920" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ActivationError_to_CompensateThrow_di" bpmnElement="Flow_ActivationError_to_CompensateThrow">
+        <di:waypoint x="1630" y="208" />
+        <di:waypoint x="1630" y="290" />
+        <di:waypoint x="1682" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_CompensateThrow_to_Notify_di" bpmnElement="Flow_CompensateThrow_to_Notify">
+        <di:waypoint x="1718" y="290" />
+        <di:waypoint x="1760" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NotifyActivationFailed_to_EndCompensated_di" bpmnElement="Flow_NotifyActivationFailed_to_EndCompensated">
+        <di:waypoint x="1860" y="290" />
+        <di:waypoint x="1920" y="290" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_CompensatePayment_di" bpmnElement="Association_CompensatePayment">
+        <di:waypoint x="1470" y="208" />
+        <di:waypoint x="1470" y="270" />
+        <di:waypoint x="1500" y="270" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="EndEvent_PaidSignupFailed_di" bpmnElement="EndEvent_PaidSignupFailed">
+        <dc:Bounds x="1700" y="362" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1680" y="405" width="76" height="27" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_SignupSuccess_di" bpmnElement="EndEvent_SignupSuccess">
-        <dc:Bounds x="1112" y="102" width="36" height="36" />
+        <dc:Bounds x="2070" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2057" y="82" width="62" height="40" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_PaidDelegated_di" bpmnElement="EndEvent_PaidDelegated">
-        <dc:Bounds x="942" y="222" width="36" height="36" />
+      <bpmndi:BPMNShape id="BoundaryEvent_CompensatedFailure_di" bpmnElement="BoundaryEvent_CompensatedFailure">
+        <dc:Bounds x="1600" y="362" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1580" y="398" width="76" height="40" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-
-      <bpmndi:BPMNEdge id="Flow_to_ValidateSignup_di" bpmnElement="Flow_to_ValidateSignup">
-        <di:waypoint x="156" y="240" />
-        <di:waypoint x="210" y="240" />
+      <bpmndi:BPMNShape id="BoundaryEvent_ValidationFailure_di" bpmnElement="BoundaryEvent_ValidationFailure">
+        <dc:Bounds x="327" y="172" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="303" y="208" width="85" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BoundaryEvent_FreeActivationFailure_di" bpmnElement="BoundaryEvent_FreeActivationFailure">
+        <dc:Bounds x="1527" y="572" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1505" y="608" width="81" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_CompensatedFailure_to_End_di" bpmnElement="Flow_CompensatedFailure_to_End">
+        <di:waypoint x="1636" y="380" />
+        <di:waypoint x="1700" y="380" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_to_InitialNotification_di" bpmnElement="Flow_to_InitialNotification">
-        <di:waypoint x="330" y="240" />
-        <di:waypoint x="390" y="240" />
+      <bpmndi:BPMNEdge id="Flow_to_ValidateSignup_di" bpmnElement="Flow_to_ValidateSignup">
+        <di:waypoint x="213" y="150" />
+        <di:waypoint x="295" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ValidationFailure_to_Notify_di" bpmnElement="Flow_ValidationFailure_to_Notify">
+        <di:waypoint x="345" y="208" />
+        <di:waypoint x="345" y="430" />
+        <di:waypoint x="445" y="430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NotifyValidationFailed_to_End_di" bpmnElement="Flow_NotifyValidationFailed_to_End">
+        <di:waypoint x="545" y="430" />
+        <di:waypoint x="627" y="430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_ParallelSplit_di" bpmnElement="Flow_to_ParallelSplit">
+        <di:waypoint x="395" y="150" />
+        <di:waypoint x="770" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Parallel_to_InitialNotification_di" bpmnElement="Flow_Parallel_to_InitialNotification">
+        <di:waypoint x="820" y="150" />
+        <di:waypoint x="895" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Parallel_to_AssessEligibility_di" bpmnElement="Flow_Parallel_to_AssessEligibility">
+        <di:waypoint x="795" y="175" />
+        <di:waypoint x="795" y="430" />
+        <di:waypoint x="895" y="430" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_InitialNotification_to_ParallelJoin_di" bpmnElement="Flow_InitialNotification_to_ParallelJoin">
+        <di:waypoint x="995" y="150" />
+        <di:waypoint x="1070" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_AssessEligibility_to_ParallelJoin_di" bpmnElement="Flow_AssessEligibility_to_ParallelJoin">
+        <di:waypoint x="995" y="430" />
+        <di:waypoint x="1095" y="430" />
+        <di:waypoint x="1095" y="175" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_to_CheckTier_di" bpmnElement="Flow_to_CheckTier">
-        <di:waypoint x="530" y="240" />
-        <di:waypoint x="590" y="240" />
+        <di:waypoint x="1120" y="150" />
+        <di:waypoint x="1205" y="150" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_PaymentRequired_di" bpmnElement="Flow_PaymentRequired">
-        <di:waypoint x="640" y="240" />
-        <di:waypoint x="710" y="240" />
+        <di:waypoint x="1255" y="150" />
+        <di:waypoint x="1320" y="150" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1279" y="125" width="18" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_FreeTier_di" bpmnElement="Flow_FreeTier">
-        <di:waypoint x="615" y="215" />
-        <di:waypoint x="615" y="120" />
-        <di:waypoint x="710" y="120" />
+        <di:waypoint x="1230" y="175" />
+        <di:waypoint x="1230" y="550" />
+        <di:waypoint x="1345" y="550" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1238" y="352" width="15" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_to_ActivateAccountFree_di" bpmnElement="Flow_to_ActivateAccountFree">
-        <di:waypoint x="850" y="120" />
-        <di:waypoint x="920" y="120" />
+      <bpmndi:BPMNEdge id="Flow_FreeActivation_to_EndSuccess_di" bpmnElement="Flow_FreeActivation_to_EndSuccess">
+        <di:waypoint x="1595" y="550" />
+        <di:waypoint x="2088" y="550" />
+        <di:waypoint x="2088" y="168" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_to_EndSuccess_di" bpmnElement="Flow_to_EndSuccess">
-        <di:waypoint x="1050" y="120" />
-        <di:waypoint x="1112" y="120" />
+      <bpmndi:BPMNEdge id="Flow_PaidFlow_to_EndSuccess_di" bpmnElement="Flow_PaidFlow_to_EndSuccess">
+        <di:waypoint x="2020" y="150" />
+        <di:waypoint x="2070" y="150" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_to_EndPaidDelegated_di" bpmnElement="Flow_to_EndPaidDelegated">
-        <di:waypoint x="880" y="240" />
-        <di:waypoint x="942" y="240" />
+      <bpmndi:BPMNEdge id="Flow_FreeTier_to_ActivateAccount_di" bpmnElement="Flow_FreeTier_to_ActivateAccount">
+        <di:waypoint x="1445" y="550" />
+        <di:waypoint x="1495" y="550" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FreeActivationFailure_to_Notify_di" bpmnElement="Flow_FreeActivationFailure_to_Notify">
+        <di:waypoint x="1545" y="608" />
+        <di:waypoint x="1545" y="690" />
+        <di:waypoint x="1645" y="690" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_FreeActivationFailed_to_End_di" bpmnElement="Flow_FreeActivationFailed_to_End">
+        <di:waypoint x="1745" y="690" />
+        <di:waypoint x="1827" y="690" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

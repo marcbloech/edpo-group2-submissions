@@ -13,6 +13,8 @@ Implementation note:
 - `src/main/resources/signup-process.bpmn`
 - `src/main/resources/payment-process.bpmn`
 
+> **Note:** These BPMN files reflect the E3 submission state. The current production BPMN models (with E5 saga compensation, parallel gateways, and validation error handling) are in `02-worldpulse/process/src/main/resources/`.
+
 ## Where the Executable Implementation Lives
 - `02-worldpulse/process` deploys the BPMN models and starts process instances from Kafka events.
 - `02-worldpulse/signup` contains signup domain workers (`validate-signup`, `activate-account`).
@@ -25,7 +27,8 @@ From repository root:
 ```bash
 cd 02-worldpulse
 mvn clean package -DskipTests
-docker compose up --build -d
+docker compose up --build -d                          # local Zeebe
+docker compose --env-file .env.cloud up --build -d    # cloud Zeebe
 ```
 
 Useful endpoints:

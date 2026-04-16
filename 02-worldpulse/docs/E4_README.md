@@ -9,7 +9,8 @@ This README documents how Exercise 4 is demonstrated in our WorldPulse project.
 
 ## Project mapping
 - Choreography documentation: `docs/E2_README.md`
-- Orchestration documentation: `docs/E3_README.md`
+- Orchestration documentation: `../../03-process-orchestration/E3_README.md`
+- Cloud deployment notes: `docs/CAMUNDA_CLOUD_DEPLOYMENT.md`
 - BPMN models:
 	- `process/src/main/resources/signup-process.bpmn`
 	- `process/src/main/resources/payment-process.bpmn`
@@ -29,7 +30,8 @@ From repository root:
 ```bash
 cd 02-worldpulse
 mvn clean package -DskipTests
-docker compose up --build -d
+docker compose up --build -d                          # local Zeebe
+docker compose --env-file .env.cloud up --build -d    # cloud Zeebe
 ```
 
 ## Demo A: Choreography behavior
@@ -45,10 +47,16 @@ curl -X POST http://localhost:8091/api/signup \
 3. Verify service-to-service event reactions in logs and Kafka topic output.
 
 ## Demo B: Orchestration behavior
-1. Follow orchestration flow in `docs/E3_README.md`.
-2. Trigger signup with the same API.
+1. Follow orchestration flow in `../../03-process-orchestration/E3_README.md`.
+2. Trigger signup with the same API or use the interactive web page at `http://localhost:8091/`.
 3. Verify process execution in Operate: `http://localhost:8085`.
 4. If retry/human decision is required, use Tasklist: `http://localhost:8086`.
+
+## Saga Compensation Demo
+1. Open `http://localhost:8091/`.
+2. Submit a `PRO` or `ENTERPRISE` signup with `Force activation failure` enabled.
+3. Verify in Operate that activation failure triggers compensation task `refund-payment`.
+4. Verify Kafka compensation events (`PaymentRefundedEvent` or `PaymentRefundFailedEvent`) and notification outcome events.
 
 ## Expected evidence for Exercise 4
 - Choreography: event propagation visible in service logs / Kafka stream

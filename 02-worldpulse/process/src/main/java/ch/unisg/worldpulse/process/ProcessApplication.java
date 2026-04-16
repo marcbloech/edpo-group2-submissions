@@ -7,6 +7,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 @Deployment(resources = {
     "classpath:signup-process.bpmn",
+    "classpath:upgrade-process.bpmn",
+    "classpath:deactivation-process.bpmn",
     "classpath:payment-process.bpmn",
     "classpath:retryPaymentForm.form"
 })

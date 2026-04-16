@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (updated 2026-03-23 (POST SUBMISSION) to reflect broadened integration)
+SUPERSEDED (31.03.2026) by 01XX ADRs
 
 ## Context
 

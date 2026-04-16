@@ -56,6 +56,12 @@ public class MessageListener {
       case "PaymentFailedEvent":
         notificationService.notifyPaymentFailed(traceid, data);
         break;
+      case "PaymentRefundedEvent":
+        notificationService.notifyPaymentRefunded(traceid, data);
+        break;
+      case "PaymentRefundFailedEvent":
+        notificationService.notifyPaymentRefundFailed(traceid, data);
+        break;
       default:
         // ignore other events
         break;

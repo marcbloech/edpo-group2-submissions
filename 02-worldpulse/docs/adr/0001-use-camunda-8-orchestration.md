@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+SUPERSEDED (31.03.2026) by 01XX ADRs
 
 ## Context
 

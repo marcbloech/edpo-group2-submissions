@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorldPulse Signup</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #0f766e;
+      --primary-2: #115e59;
+      --border: #d1d5db;
+      --danger: #b91c1c;
+      --ok: #166534;
+    }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: linear-gradient(145deg, #eef2ff 0%, var(--bg) 45%);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 780px;
+      margin: 40px auto;
+      padding: 0 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    }
+    h1 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 1.5rem;
+    }
+    p {
+      margin-top: 0;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field.full {
+      grid-column: span 2;
+    }
+    label {
+      font-size: 0.9rem;
+      color: #374151;
+    }
+    input, select {
+      font-size: 0.95rem;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      background: #fff;
+    }
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.2);
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+      color: #374151;
+      font-size: 0.92rem;
+    }
+    button {
+      margin-top: 16px;
+      background: var(--primary);
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 11px 16px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    button:hover { background: var(--primary-2); }
+    .result {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      display: none;
+      white-space: pre-wrap;
+      font-family: Consolas, monospace;
+      font-size: 0.9rem;
+    }
+    .ok { display: block; color: var(--ok); background: #ecfdf5; border: 1px solid #86efac; }
+    .err { display: block; color: var(--danger); background: #fef2f2; border: 1px solid #fecaca; }
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: 1fr; }
+      .field.full { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>WorldPulse Signup</h1>
+      <p>Interactive signup trigger for orchestration flow (Kafka event ingress -> Camunda 8 process).</p>
+      <form id="signupForm">
+        <div class="grid">
+          <div class="field">
+            <label for="name">Name</label>
+            <input id="name" required value="Alice Demo">
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" type="email" required value="alice@example.com">
+          </div>
+          <div class="field full">
+            <label for="tier">Tier</label>
+            <select id="tier">
+              <option value="FREE">FREE</option>
+              <option value="PRO" selected>PRO</option>
+              <option value="ENTERPRISE">ENTERPRISE</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label class="check">
+              <input id="forceActivationFailure" type="checkbox">
+              Force activation failure (demo Saga compensation path)
+            </label>
+          </div>
+        </div>
+        <button type="submit">Submit Signup</button>
+      </form>
+      <div id="result" class="result"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("signupForm");
+    const result = document.getElementById("result");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      result.className = "result";
+      result.textContent = "";
+
+      const payload = {
+        name: document.getElementById("name").value.trim(),
+        email: document.getElementById("email").value.trim(),
+        tier: document.getElementById("tier").value,
+        forceActivationFailure: document.getElementById("forceActivationFailure").checked
+      };
+
+      try {
+        const response = await fetch("/api/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const responseText = await response.text();
+        if (!response.ok) {
+          throw new Error(responseText || "Signup request failed");
+        }
+
+        result.className = "result ok";
+        result.textContent = "Submitted successfully.\nResponse: " + responseText;
+      } catch (error) {
+        result.className = "result err";
+        result.textContent = "Request failed.\n" + error.message;
+      }
+    });
+  </script>
+</body>
+</html>

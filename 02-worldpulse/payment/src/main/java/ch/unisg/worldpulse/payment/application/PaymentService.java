@@ -2,6 +2,10 @@
 
 package ch.unisg.worldpulse.payment.application;
 
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,27 +17,55 @@ import org.springframework.stereotype.Component;
 @Component
 public class PaymentService {
 
+  private static final Logger LOG = LoggerFactory.getLogger(PaymentService.class);
+
+  public record PaymentResult(boolean success, long amount, String transactionId) {
+  }
+
+  public record RefundResult(boolean success, boolean skipped, String refundTransactionId) {
+  }
+
   /**
    * Simulates processing a payment for the given user and tier.
-   * @return true if payment succeeded, false if failed
    */
-  public boolean processPayment(String userId, String tier) {
+  public PaymentResult processPayment(String userId, String tier) {
     long amount = getAmountForTier(tier);
 
     if (amount == 0) {
-      System.out.println("Payment: FREE tier for user " + userId + " — no charge needed");
-      return true;
+      LOG.info("Payment: FREE tier for user {} — no charge needed", userId);
+      return new PaymentResult(true, 0, null);
     }
 
     boolean success = Math.random() < 0.8; // Simulate 80% success rate for paid tiers
+    String transactionId = success ? UUID.randomUUID().toString() : null;
 
     if (success) {
-      System.out.println("Payment: Charged " + amount + " cents for " + tier + " tier (user: " + userId + ")");
+      LOG.info("Payment: Charged {} cents for {} tier (user: {})", amount, tier, userId);
     } else {
-      System.out.println("Payment: FAILED for " + tier + " tier, amount " + amount + " cents (user: " + userId + ")");
+      LOG.info("Payment: FAILED for {} tier, amount {} cents (user: {})", tier, amount, userId);
     }
 
-    return success;
+    return new PaymentResult(success, amount, transactionId);
+  }
+
+  /**
+   * Simulates compensating a previous successful payment.
+   */
+  public RefundResult refundPayment(String userId, String tier, long paymentAmount, String transactionId) {
+    if (paymentAmount <= 0 || transactionId == null || transactionId.isBlank()) {
+      LOG.info("Refund: skipped for {} tier (user: {}) - no captured payment", tier, userId);
+      return new RefundResult(true, true, "");
+    }
+
+    boolean success = Math.random() < 0.9; // simulate occasional refund provider failures
+    if (success) {
+      String refundTransactionId = UUID.randomUUID().toString();
+      LOG.info("Refund: refunded {} cents for {} tier (user: {}, refundTx: {})", paymentAmount, tier, userId, refundTransactionId);
+      return new RefundResult(true, false, refundTransactionId);
+    }
+
+    LOG.info("Refund: FAILED for {} tier (user: {}, originalTx: {})", tier, userId, transactionId);
+    return new RefundResult(false, false, "");
   }
 
   // Maps tier name to price in cents (e.g. PRO = CHF 19.00 = 1900 cents)

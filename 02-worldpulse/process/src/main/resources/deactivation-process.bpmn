@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  id="Definitions_Deactivation"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="Camunda Modeler"
+                  exporterVersion="5.45.0">
+
+  <bpmn:process id="deactivation-process" name="WorldPulse Deactivation Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_DeactivationRequested" name="Deactivation Requested">
+      <bpmn:outgoing>Flow_to_NotifyDeactivationRequested</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:sendTask id="Task_NotifyDeactivationRequested" name="Notify Deactivation Requested">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=reason" target="reason" />
+          <zeebe:input source="=&quot;AccountDeactivationRequestedEvent&quot;" target="notificationType" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_NotifyDeactivationRequested</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_DeactivateAccount</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <bpmn:serviceTask id="Task_DeactivateAccount" name="Deactivate Account">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="deactivate-account" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=userId" target="userId" />
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=reason" target="reason" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:output source="=accountActive" target="accountActive" />
+          <zeebe:output source="=deactivatedAt" target="deactivatedAt" />
+          <zeebe:output source="=deactivationReason" target="deactivationReason" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_DeactivateAccount</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_NotifyDeactivated</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sendTask id="Task_NotifyDeactivated" name="Notify Deactivated">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="send-notification" />
+        <zeebe:ioMapping>
+          <zeebe:input source="=email" target="email" />
+          <zeebe:input source="=name" target="name" />
+          <zeebe:input source="=tier" target="tier" />
+          <zeebe:input source="=traceid" target="traceid" />
+          <zeebe:input source="=deactivatedAt" target="deactivatedAt" />
+          <zeebe:input source="=deactivationReason" target="reason" />
+          <zeebe:input source="=&quot;AccountDeactivatedEvent&quot;" target="notificationType" />
+        </zeebe:ioMapping>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_NotifyDeactivated</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_EndDeactivated</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <bpmn:endEvent id="EndEvent_Deactivated" name="Deactivation Completed">
+      <bpmn:incoming>Flow_to_EndDeactivated</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_to_NotifyDeactivationRequested" sourceRef="StartEvent_DeactivationRequested" targetRef="Task_NotifyDeactivationRequested" />
+    <bpmn:sequenceFlow id="Flow_to_DeactivateAccount" sourceRef="Task_NotifyDeactivationRequested" targetRef="Task_DeactivateAccount" />
+    <bpmn:sequenceFlow id="Flow_to_NotifyDeactivated" sourceRef="Task_DeactivateAccount" targetRef="Task_NotifyDeactivated" />
+    <bpmn:sequenceFlow id="Flow_to_EndDeactivated" sourceRef="Task_NotifyDeactivated" targetRef="EndEvent_Deactivated" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Deactivation">
+    <bpmndi:BPMNPlane id="BPMNPlane_Deactivation" bpmnElement="deactivation-process">
+      <bpmndi:BPMNShape id="StartEvent_DeactivationRequested_di" bpmnElement="StartEvent_DeactivationRequested">
+        <dc:Bounds x="120" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyDeactivationRequested_di" bpmnElement="Task_NotifyDeactivationRequested">
+        <dc:Bounds x="230" y="190" width="190" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_DeactivateAccount_di" bpmnElement="Task_DeactivateAccount">
+        <dc:Bounds x="500" y="190" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_NotifyDeactivated_di" bpmnElement="Task_NotifyDeactivated">
+        <dc:Bounds x="750" y="190" width="160" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Deactivated_di" bpmnElement="EndEvent_Deactivated">
+        <dc:Bounds x="980" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Flow_to_NotifyDeactivationRequested_di" bpmnElement="Flow_to_NotifyDeactivationRequested">
+        <di:waypoint x="156" y="230" />
+        <di:waypoint x="230" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_DeactivateAccount_di" bpmnElement="Flow_to_DeactivateAccount">
+        <di:waypoint x="420" y="230" />
+        <di:waypoint x="500" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_NotifyDeactivated_di" bpmnElement="Flow_to_NotifyDeactivated">
+        <di:waypoint x="670" y="230" />
+        <di:waypoint x="750" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_EndDeactivated_di" bpmnElement="Flow_to_EndDeactivated">
+        <di:waypoint x="910" y="230" />
+        <di:waypoint x="980" y="230" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,7 +1,6 @@
 # ADR 0006: Add Resilience Fallbacks for Orchestration
 
-- Status: Accepted
-- Date: 2026-03-17
+SUPERSEDED (31.03.2026) by 01XX ADRs
 
 ## Context
 For a robust architecture, transient infrastructure failures (especially Zeebe availability) must not silently lose business events.
