@@ -1,0 +1,43 @@
+direction down
+typeface clean
+colorMode bold
+
+// Infrastructure
+Kafka Event Bus [icon: kafka, label: "Kafka Event Bus (topic: worldpulse)", color: grey]
+
+// Signup Bounded Context
+Signup Context [color: blue] {
+  REST API [icon: spring, label: "REST API (POST /signup)"]
+  Camunda Zeebe [icon: camunda, label: "Camunda / Zeebe Engine"]
+}
+
+// Payment Bounded Context
+Payment Context [color: orange] {
+  Payment Worker [icon: spring, label: "Payment Service (maybe also CAMUNDA)"]
+}
+
+// Notification Bounded Context
+Notification Context [color: green] {
+  Notification Listener [icon: spring, label: "@KafkaListener (pure choreography)"]
+}
+
+// User entry point
+User [icon: user]
+
+// Connections
+User > REST API: POST /api/signup
+REST API > Camunda Zeebe: starts process instance
+
+// Orchestration: Commands (orange)
+Camunda Zeebe > Kafka Event Bus: RetrievePaymentCommand [color: orange]
+Kafka Event Bus > Payment Worker: RetrievePaymentCommand [color: orange]
+
+// Events back (blue)
+Payment Worker > Kafka Event Bus: PaymentReceived / FailedEvent [color: blue]
+Kafka Event Bus > Camunda Zeebe: PaymentReceived / FailedEvent [color: blue]
+
+// Choreography: Notification listens to all events
+Kafka Event Bus > Notification Listener: ALL events (choreography) [color: green]
+
+// Initial event
+REST API > Kafka Event Bus: SignupRequestedEvent [color: blue]

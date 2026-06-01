@@ -1,0 +1,191 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[english]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{enumitem}
+
+\title{Exercise 3: Process Orchestration with Camunda 8\\[0.5em]
+\large Event-driven and Process-oriented Architectures $\cdot$ FS2026 $\cdot$ Group 2\\
+University of St.\,Gallen $\cdot$ School of Computer Science}
+
+\author{Marc Bl\"ochlinger \and Arman Gezerer \and Andrei Faur}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent GitHub: \url{https://github.com/marcbloech/edpo-group2}
+
+\begin{table}[h]
+    \centering
+    \caption{Group Contributions}
+    \begin{tabular}{
+        >{\raggedright\arraybackslash}p{0.15\textwidth}
+        >{\raggedright\arraybackslash}p{0.75\textwidth}
+    }
+    \toprule
+    \textbf{Member} & \textbf{Contribution Area} \\
+    \midrule
+    Marc   & BPMN process modeling (signup-process, payment-process), Zeebe job worker design \\
+    Arman  & Spring Boot integration, service task worker implementation \\
+    Andrei & Process testing, documentation, Camunda~8 configuration \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+
+\section{Project Overview}
+
+WorldPulse is a subscription-based SaaS platform. Users can sign up for one of three subscription tiers --- FREE, PRO, or ENTERPRISE --- each with distinct onboarding flows. Exercise~3 introduces process orchestration into the WorldPulse architecture using Camunda~8 (Zeebe). Two BPMN~2.0 processes --- a Signup Process and a Payment Process --- coordinate all service interactions, replacing the implicit E2 choreography chain with a declarative, engine-driven workflow.
+
+
+\section{BPMN Process Design}
+
+\subsection{Signup Process (\texttt{signup-process})}
+
+The Signup Process is the entry point for every new WorldPulse user. The process starts when the process service's \texttt{MessageListener} consumes a \texttt{SignupRequestedEvent} from the \texttt{worldpulse} Kafka topic and creates a Zeebe process instance with the signup variables.
+
+\begin{enumerate}
+    \item \textbf{Validate Signup Data} (Service Task, type: \texttt{validate-signup}): Validates user-supplied fields (name, email, tier) and generates a \texttt{userId} and \texttt{traceId} for downstream correlation. On failure, an \textbf{error boundary event} catches \texttt{SIGNUP\_VALIDATION\_ERROR} and routes to a notification send task, then a failure end event. The signup process itself handles this error --- it does not propagate.
+
+    \item \textbf{Parallel Gateway (AND-split)}: After validation, two branches execute concurrently:
+    \begin{itemize}
+        \item \textbf{Send Initial Processing Notification} (Send Task, type: \texttt{send-notification}): Dispatches a \texttt{SignupRequestedEvent} notification informing the user their request is being processed. We use a \emph{send task} rather than a service task because this is semantically a message dispatch, not computational work.
+        \item \textbf{Assess Payment Eligibility} (Service Task, type: \texttt{assess-payment-eligibility}): Returns a \texttt{paymentRequired} boolean (true for PRO/ENTERPRISE, false for FREE).
+    \end{itemize}
+
+    \item \textbf{Parallel Gateway (AND-join)}: Waits for both branches to complete.
+
+    \item \textbf{Payment Required?} (Exclusive Gateway, XOR): Routes based on \texttt{paymentRequired}.
+
+    \item \textbf{FREE path}: Send Welcome Notification (Send Task) $\rightarrow$ Activate User Account (Service Task, type: \texttt{activate-account}) $\rightarrow$ End. If activation fails, an error boundary catches \texttt{ACTIVATION\_ERROR}, sends a failure notification (no refund needed), and terminates.
+
+    \item \textbf{PAID path}: Enters a subprocess (``Paid Signup Transaction'') containing a \textbf{Call Activity} to \texttt{payment-process} $\rightarrow$ Activate User Account (Paid) $\rightarrow$ End. If paid activation fails after payment, an error boundary on the subprocess triggers compensation: \texttt{ProcessRefundWorker} reverses the charge, a failure notification is sent with refund details, and the process ends in a compensated failure state.
+\end{enumerate}
+
+\textbf{Gateway types used}: The signup process uses both a \textbf{parallel gateway} (AND-split/join for concurrent notification and eligibility check) and \textbf{exclusive gateways} (XOR for tier-based routing and retry decisions). The parallel gateway demonstrates that BPMN can model concurrent execution natively --- the notification and eligibility assessment are independent and do not need to wait for each other.
+
+%% TODO: Insert signup-process BPMN diagram
+%\begin{figure}[h]
+%    \centering
+%    \includegraphics[width=\textwidth]{signup-process.png}
+%    \caption{Signup process BPMN model.}
+%\end{figure}
+
+\subsection{Payment Process (\texttt{payment-process})}
+
+The Payment Process handles all payment-related steps for PRO and ENTERPRISE signups. Importantly, the payment process focuses exclusively on the payment concern --- \textbf{account activation was moved out} of this process because it belongs to the signup bounded context, not the payment bounded context (see Section~\ref{sec:decisions}).
+
+\begin{itemize}
+    \item \textbf{Process Payment} (Service Task, type: \texttt{process-payment}): Attempts to charge the user. Outputs \texttt{paymentSuccess}, \texttt{paymentAmount}, and \texttt{transactionId}.
+    \item \textbf{Payment Successful?} (Exclusive Gateway): Branches on \texttt{paymentSuccess}.
+    \item \textbf{Success path}: Send Payment Success Notification (Send Task) $\rightarrow$ Slack: Payment Success (Connector Task, \texttt{io.camunda:slack:1}) $\rightarrow$ End.
+    \item \textbf{Failure path}: \textbf{Decide: Retry Payment?} (User Task) --- presents an operator with a deployed Camunda form (\texttt{retryPaymentForm}) via Tasklist to view failure details and decide whether to retry.
+    \item \textbf{Retry?} (Exclusive Gateway): If retry is chosen and \texttt{retryCount < maxRetryCount}, loops back to Process Payment. Otherwise routes to Send Payment Failed Notification (Send Task) $\rightarrow$ Slack: Payment Failed (Connector Task) $\rightarrow$ End.
+\end{itemize}
+
+%% TODO: Insert payment-process BPMN diagram
+%\begin{figure}[h]
+%    \centering
+%    \includegraphics[width=\textwidth]{payment-process.png}
+%    \caption{Payment process BPMN model.}
+%\end{figure}
+
+
+\section{Exception Handling and Boundary Events}
+
+Both processes use BPMN boundary events to handle exceptional conditions declaratively. The table below lists every error path and clarifies \emph{who handles it}:
+
+\begin{table}[h]
+    \centering
+    \caption{Error handling across WorldPulse BPMN processes}
+    \small
+    \begin{tabular}{
+        >{\raggedright\arraybackslash}p{0.18\textwidth}
+        >{\raggedright\arraybackslash}p{0.14\textwidth}
+        >{\raggedright\arraybackslash}p{0.30\textwidth}
+        >{\raggedright\arraybackslash}p{0.28\textwidth}
+    }
+    \toprule
+    \textbf{Boundary Event} & \textbf{Type} & \textbf{Behaviour} & \textbf{Handled By} \\
+    \midrule
+    Payment Timeout & Timer (PT5M) & Fires if payment task exceeds 5 minutes. Routes to error notification $\rightarrow$ Slack $\rightarrow$ Technical Error end. & \texttt{payment-process} internally. Error propagates up to \texttt{signup-process} subprocess, triggering compensation (refund). \\
+    \addlinespace
+    Payment Processing Error & Error (\texttt{PAYMENT\_ERROR}) & Catches BPMN error thrown by worker. Same error notification path. & Same as above. \\
+    \addlinespace
+    Validation Failure & Error (\texttt{SIGNUP\_VALIDATION\_ERROR}) & Catches bad email, missing name, unsupported tier. Routes to notification $\rightarrow$ End. & \texttt{signup-process} directly. No payment attempted, no compensation needed. \\
+    \addlinespace
+    Activation Failure (Free) & Error (\texttt{ACTIVATION\_ERROR}) & Catches free-tier activation failure. Routes to notification $\rightarrow$ End. & \texttt{signup-process} directly. No payment was captured, so no refund. \\
+    \addlinespace
+    Activation Failure (Paid) & Error (\texttt{ACTIVATION\_ERROR}) & Catches paid activation failure. Triggers: Refund $\rightarrow$ Notification $\rightarrow$ Compensated End. & \texttt{signup-process} subprocess. Sends \texttt{refund-payment} command to payment service's \texttt{ProcessRefundWorker}. \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+The Technical Error end event in \texttt{payment-process} carries an error definition (\texttt{PAYMENT\_ERROR}), which propagates upward via BPMN's hierarchical error propagation to the calling \texttt{signup-process}, where the subprocess boundary event catches it and triggers compensation. This design ensures every failure path is visible in the BPMN model, not buried in application code.
+
+
+\section{Design Decisions and Trade-offs}
+\label{sec:decisions}
+
+\subsection{Account activation moved to signup context}
+
+In our initial design, \texttt{activate-account} sat inside \texttt{payment-process}. This was a bounded context violation: account activation is a signup/user concern, not a payment concern. A payment process should handle payment and return a result; it should not manage user lifecycle. We moved \texttt{activate-account} into \texttt{signup-process}, where it runs after the call activity to \texttt{payment-process} returns. Each BPMN process now operates within its own bounded context.
+
+\subsection{Notification tasks as send tasks}
+
+We initially used generic service tasks for notification dispatch. We changed these to BPMN \textbf{send tasks}, which are semantically correct for ``send this message'' operations and visually distinguish notification dispatch from computational work like payment processing.
+
+\subsection{Camunda~8 over Camunda~7 --- specific to WorldPulse}
+
+We chose Camunda~8 for reasons specific to our architecture:
+
+\begin{enumerate}
+    \item \textbf{Worker model fits our multi-container setup}: WorldPulse runs each service in a separate Docker container. Camunda~8's job workers poll for jobs via gRPC, mapping naturally to this setup. Camunda~7's Java Delegates would require domain logic inside the engine's JVM, violating our service boundaries.
+    \item \textbf{Ready-to-use connectors}: WorldPulse sends Slack notifications directly from the BPMN using Camunda~8's built-in Slack connector (\texttt{io.camunda:slack:1}). In Camunda~7, we would need custom REST code for the Slack API.
+    \item \textbf{Event-sourced persistence}: Zeebe's event sourcing aligns with our event-driven architecture. Process state is a sequence of events, not mutable database rows.
+    \item \textbf{Forward compatibility}: The course introduces Camunda Cloud later. Starting on Camunda~8 avoids a mid-semester migration.
+\end{enumerate}
+
+\textbf{Trade-off accepted}: Camunda~8 adds four containers (Zeebe, Operate, Tasklist, Elasticsearch). Camunda~7 embedded would add zero. We accepted this complexity because the architectural benefits outweigh it for WorldPulse.
+
+\subsection{Why not Kafka-based choreography for signup-to-payment?}
+
+The command/event heuristic asks: ``Is it OK if this message is ignored?'' For payment processing, the answer is no --- a paid user must not be activated without successful payment. This makes it a command relationship. While we could implement commands over Kafka (as Flowing Retail does with \texttt{RetrievePaymentCommand}), Zeebe provides built-in timeout handling, error propagation, and stateful retry. For broadcasting business outcomes (\texttt{PaymentReceivedEvent}, \texttt{AccountActivatedEvent}), Kafka choreography remains the right choice --- workers publish these events after completing their Zeebe jobs, and any downstream consumer can react or ignore them.
+
+\subsection{Call Activity vs.\ Embedded Sub-process}
+
+We chose a call activity over an embedded sub-process, giving the payment process its own lifecycle, independent versioning, and reuse potential (the upgrade process also calls \texttt{payment-process}).
+
+\subsection{Retry loop via User Task}
+
+The retry decision is modelled as a user task with a deployed Camunda form (\texttt{retryPaymentForm}) rather than an automatic retry counter in code. This keeps the business rule visible in the BPMN diagram and avoids infinite retry loops --- operators explicitly authorise each retry via Camunda Tasklist.
+
+
+\section{Connection to Lecture Concepts}
+
+\textbf{Process Orchestration in WorldPulse}: Zeebe acts as the central orchestrator for the signup-to-payment flow. When a \texttt{SignupRequestedEvent} arrives on Kafka, the process service starts a \texttt{signup-process} instance. Zeebe then dispatches commands to workers: \texttt{validate-signup} to the signup service, \texttt{process-payment} to the payment service, \texttt{send-notification} to the notification service. Unlike our E2 choreography where the payment service independently reacted to \texttt{SignupRequestedEvent}, the orchestrated flow makes dependencies explicit and process state visible in Operate.
+
+\textbf{Service Tasks and Job Workers}: Each service task maps to a \texttt{@JobWorker}-annotated method in the owning service. For example, \texttt{ProcessPaymentWorker} in the payment service handles \texttt{process-payment} jobs. Workers poll Zeebe asynchronously --- the coupling is in the flow dependency (activation depends on payment completing), not in the communication mechanism.
+
+\textbf{User Tasks}: The \texttt{Decide: Retry Payment?} user task pauses the process until a human operator completes the form in Tasklist. This demonstrates combining automated and manual steps in a single executable model.
+
+\textbf{Call Activities}: The signup process delegates to the payment process via a Call Activity with \texttt{propagateAllChildVariables="true"}. This keeps each process in its bounded context while sharing the payment result for the activation decision.
+
+\textbf{Timer and Error Events}: The 5-minute timer boundary prevents indefinite waiting. The error boundary catches \texttt{PAYMENT\_ERROR}. Both are declared in the BPMN model, making exception handling visible rather than buried in code.
+
+
+\section{Reflections and Lessons Learnt}
+
+Modelling the processes in BPMN before writing code forced us to think about responsibilities, failure modes, and variable scope early. The biggest challenge was Zeebe's strict \texttt{ioMapping} semantics: unlike Camunda~7, variables are not globally shared by default, which initially caused missing variable errors in the payment process when called from the signup process.
+
+The bounded context violation (account activation inside \texttt{payment-process}) was caught during feedback review. Moving it to \texttt{signup-process} clarified responsibilities: the payment process answers ``did payment succeed?'' and the signup process decides what to do with that answer.
+
+The separation into two processes also highlighted how much complexity can accumulate in the payment flow (retries, timeouts, error handling) that would otherwise be hidden inside application code. Having it visually modelled made the logic reviewable by all group members.
+
+Going forward, we plan to extend Kafka integration: workers already publish business events (\texttt{PaymentReceivedEvent}, \texttt{AccountActivatedEvent}, etc.) to the \texttt{worldpulse} Kafka topic after completing their Zeebe jobs, allowing downstream consumers (notification, analytics, audit) to react via choreography while the core flow remains orchestrated.
+
+\end{document}

@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "UserDashboard",
+  "namespace": "ch.unisg.worldpulse.streams.avro",
+  "fields": [
+    {"name": "userId", "type": "string"},
+    {"name": "name", "type": "string"},
+    {"name": "email", "type": "string"},
+    {"name": "currentTier", "type": "string"},
+    {"name": "lifecycleEventCount", "type": "long"},
+    {"name": "lastLifecycleEvent", "type": "string"},
+    {"name": "totalPayments", "type": "long"},
+    {"name": "successfulPayments", "type": "long"},
+    {"name": "failedPayments", "type": "long"},
+    {"name": "lastPaymentStatus", "type": "string"}
+  ]
+}

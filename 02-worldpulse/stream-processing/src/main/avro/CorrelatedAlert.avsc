@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "CorrelatedAlert",
+  "namespace": "ch.unisg.worldpulse.streams.avro",
+  "fields": [
+    {"name": "sector", "type": "string"},
+    {"name": "marketSymbol", "type": "string"},
+    {"name": "marketAlertType", "type": "string"},
+    {"name": "marketRiskLevel", "type": "string"},
+    {"name": "marketChangePercent", "type": ["null", "double"], "default": null},
+    {"name": "socialTopic", "type": "string"},
+    {"name": "socialPostCount", "type": ["null", "int"], "default": null},
+    {"name": "socialRiskLevel", "type": "string"},
+    {"name": "correlationTimestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+  ]
+}

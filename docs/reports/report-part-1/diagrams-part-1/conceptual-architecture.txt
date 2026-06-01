@@ -1,0 +1,107 @@
+// WorldPulse Conceptual Architecture
+// Solid lines = Zeebe commands (orchestration)
+// Dashed lines = Kafka events (choreography)
+//
+// Paste into https://app.eraser.io/workspace/new?type=diagram
+
+direction right
+typeface clean
+colorMode bold
+
+// ── User entry ──
+User [icon: user]
+
+// ── Core Domain Services ──
+// All four services are Spring Boot + Camunda SDK + Kafka
+Signup Service [icon: spring, label: "Signup Service\n:8091", color: blue] {
+  ValidateSignupWorker [icon: java, label: "validate-signup"]
+  AssessPaymentEligibilityWorker [icon: java, label: "assess-payment-eligibility"]
+  ActivateAccountWorker [icon: java, label: "activate-account"]
+  ApplyTierUpgradeWorker [icon: java, label: "apply-tier-upgrade"]
+  DeactivateAccountWorker [icon: java, label: "deactivate-account"]
+}
+
+Payment Service [icon: spring, label: "Payment Service\n:8093", color: orange] {
+  ProcessPaymentWorker [icon: java, label: "process-payment"]
+  ProcessRefundWorker [icon: java, label: "refund-payment"]
+}
+
+Notification Service [icon: spring, label: "Notification Service\n:8094", color: green] {
+  SendNotificationWorker [icon: java, label: "send-notification"]
+  ScannerEventListener [icon: java, label: "ScannerEventListener\n(Kafka, always active)"]
+}
+
+// ── Orchestration Layer ──
+// Process Service is a Kafka→Zeebe ingress bridge:
+// it routes 3 lifecycle events to 3 BPMN processes
+// (signup, upgrade, deactivation), and owns payment-process
+// as a sub-process called from signup-process.
+Process Service [icon: spring, label: "Process Service\n:8095", color: purple] {
+  MessageListener [icon: java, label: "MessageListener\n(Kafka-to-Zeebe bridge,\nretry+DLQ)"]
+  SignupProcess [icon: file, label: "signup-process.bpmn"]
+  UpgradeProcess [icon: file, label: "upgrade-process.bpmn"]
+  DeactivationProcess [icon: file, label: "deactivation-process.bpmn"]
+  PaymentProcess [icon: file, label: "payment-process.bpmn"]
+}
+
+Zeebe [icon: cpu, label: "Zeebe Broker\n:26500", color: red]
+
+// ── External sink reached from the orchestration side ──
+// Slack is not a Spring service — it is Camunda's Marketplace
+// connector (io.camunda:slack:1) invoked directly from
+// payment-process.bpmn as service tasks (Success/Failed/Error).
+Slack [icon: slack, label: "Slack\n(Marketplace connector\nio.camunda:slack:1)", color: red]
+
+// ── Event Bus ──
+Kafka [icon: kafka, label: "Kafka\ntopic: worldpulse", color: grey]
+
+// ── Downstream Scanners (choreography consumers/producers) ──
+Scanners [color: grey] {
+  Market Scanner [icon: python, label: "Market Scanner\n(Python)"]
+  Bluesky Scanner [icon: python, label: "Bluesky Scanner\n(Python)"]
+}
+
+// ── Monitoring ──
+Operate [icon: cpu, label: "Operate :8085", color: grey]
+
+// ════════════════════════════════════════
+// CONNECTIONS
+// ════════════════════════════════════════
+
+// User entry: three lifecycle endpoints, all on the signup service
+User > Signup Service: POST /api/signup
+User > Signup Service: POST /api/upgrade
+User > Signup Service: POST /api/deactivate
+
+// Step 1: Signup publishes one of three lifecycle events to Kafka
+Signup Service > Kafka: SignupRequestedEvent [style: dashed, color: blue]
+Signup Service > Kafka: UpgradeRequestedEvent [style: dashed, color: blue]
+Signup Service > Kafka: AccountDeactivationRequestedEvent [style: dashed, color: blue]
+
+// Step 2: Process Service's MessageListener routes each event type
+// to the matching BPMN process (Kafka→Zeebe ingress bridge)
+Kafka > Process Service: SignupRequested → signup-process [style: dashed, color: blue]
+Kafka > Process Service: UpgradeRequested → upgrade-process [style: dashed, color: blue]
+Kafka > Process Service: AccountDeactivationRequested → deactivation-process [style: dashed, color: blue]
+
+// Step 3: Zeebe issues commands to workers (orchestration)
+Zeebe > Signup Service: validate-signup, activate-account, apply-tier-upgrade, deactivate-account [color: red, label: "commands (gRPC)"]
+Zeebe > Payment Service: process-payment, refund-payment [color: red, label: "commands (gRPC)"]
+Zeebe > Notification Service: send-notification [color: red, label: "command (gRPC)"]
+Zeebe > Slack: postMessage (payment-process) [color: red, label: "Marketplace connector"]
+Process Service > Zeebe: start process instance (3 process IDs) [color: red]
+
+// Step 4: Workers publish events to Kafka after job completion (choreography)
+Payment Service > Kafka: PaymentReceived/Failed/RefundedEvent [style: dashed, color: blue]
+Notification Service > Kafka: NotificationSent/FailedEvent [style: dashed, color: blue]
+Signup Service > Kafka: AccountActivatedEvent [style: dashed, color: blue]
+
+// Scanners publish events to Kafka
+Market Scanner > Kafka: MarketAlertEvent [style: dashed, color: blue]
+Bluesky Scanner > Kafka: SocialTrendEvent [style: dashed, color: blue]
+
+// Notification Service consumes scanner events from Kafka (choreography)
+Kafka > Notification Service: MarketAlertEvent, SocialTrendEvent [style: dashed, color: blue]
+
+// Monitoring
+Zeebe > Operate: process data [color: grey]

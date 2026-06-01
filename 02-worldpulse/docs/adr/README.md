@@ -21,6 +21,14 @@ These four ADRs consolidate and supersede the original 00xx series. They address
 - **[0103](0103-event-command-semantics.md)**: Separate Events (Kafka) from Commands (Zeebe) with CloudEvents on a Shared Topic
 - **[0104](0104-camunda-8-over-camunda-7.md)**: Use Camunda 8 (Zeebe) over Camunda 7 for Process Orchestration
 
+## ADR List (02xx series — Assignment 2, stream processing)
+
+- **[0201](0201-globalk-table-for-symbol-metadata.md)**: GlobalKTable for Symbol Metadata Instead of External DB Lookup
+- **[0202](0202-suppress-policy-per-aggregation.md)**: Per-Aggregation Suppress Policy for Windowed Operations
+- **[0203](0203-stateless-enrichment-topology.md)**: Stateless Enrichment Topology Structure for App A (E6)
+- **[0204](0204-windowing-strategy.md)**: Tumbling Windows and Window Size Selection for App B Aggregations
+- **[0205](0205-python-external-event-scanners.md)**: Python-Based External Event Scanners (market-scanner, bluesky-scanner)
+
 ## Superseded ADRs (00xx series — original E2-E4 submissions)
 
 The following ADRs were written incrementally during E2-E4. They are retained for history but superseded by the 01xx series above.

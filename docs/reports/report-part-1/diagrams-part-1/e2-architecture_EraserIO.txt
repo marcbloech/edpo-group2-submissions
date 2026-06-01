@@ -10,7 +10,7 @@ WorldPulse Services [color: blue] {
   Signup [icon: spring, label: "Signup Service :8091"]
   Payment [icon: spring, label: "Payment Service :8093"]
   Notification [icon: spring, label: "Notification Service :8094"]
-  Process [icon: spring, label: "Process Service :8095"]
+  Process [icon: spring, label: "Process Service :8095", color: black, styleMode: plain, colorMode: bold]
 }
 
 // Kafka
@@ -42,8 +42,8 @@ worldpulse topic > Notification: consumes all events
 
 // Process service — Kafka to Zeebe bridge
 worldpulse topic > Process: consumes SignupRequestedEvent
-Process > Zeebe: starts BPMN process instance (gRPC)
-Zeebe > Process: activates jobs (hello-signup)
+Process > Zeebe: starts BPMN process instance (gRPC) [color: green]
+Zeebe > Process: activates jobs (hello-signup) [color: green]
 
 // Camunda 8 internal connections
 Zeebe > Elasticsearch: exports process data

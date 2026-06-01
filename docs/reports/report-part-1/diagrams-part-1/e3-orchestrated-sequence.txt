@@ -1,0 +1,80 @@
+// WorldPulse Orchestrated PRO Signup Flow (E3/E4)
+// Shows the hybrid pattern: Kafka event triggers Zeebe orchestration,
+// workers publish Kafka events after completing Zeebe jobs.
+//
+// Contrast with e2-sequenceDiagram (pure choreography).
+// Paste into https://app.eraser.io/workspace/new?type=sequence-diagram
+
+typeface clean
+colorMode bold
+
+Client [icon: monitor] > Signup [icon: spring, color: blue]: 1. POST /api/signup (PRO tier)
+activate Signup
+Signup > Kafka [icon: kafka, color: orange]: 2. SignupRequestedEvent [color: blue, label: "event (Kafka)"]
+deactivate Signup
+
+// Kafka delivers event to process service AND notification service
+Kafka > Notification [icon: spring, color: green]: SignupRequestedEvent [color: green, label: "event (choreography)"]
+activate Notification
+Notification > Notification: welcome email (simulated)
+Notification > Kafka: NotificationSentEvent [color: blue, label: "event"]
+deactivate Notification
+
+Kafka > Process [icon: spring, color: purple]: SignupRequestedEvent [color: purple, label: "event → bridge"]
+activate Process
+Process > Zeebe [icon: camunda, color: red]: 3. start signup-process instance (gRPC) [color: red]
+deactivate Process
+
+// Zeebe orchestrates via commands
+Zeebe > Signup: 4. validate-signup [color: red, label: "command (Zeebe)"]
+activate Signup
+Signup > Zeebe: job complete (valid) [color: red]
+deactivate Signup
+
+// Parallel gateway: notification + eligibility
+Zeebe > Notification: 5. send-notification (initial) [color: red, label: "command"]
+activate Notification
+Notification > Zeebe: job complete [color: red]
+deactivate Notification
+
+Zeebe > Signup: 5. assess-payment-eligibility [color: red, label: "command"]
+activate Signup
+Signup > Zeebe: paymentRequired=true [color: red]
+deactivate Signup
+
+// XOR: PRO tier → call activity to payment-process
+Zeebe > Zeebe: 6. call activity: payment-process
+
+Zeebe > Payment [icon: spring, color: orange]: 7. process-payment [color: red, label: "command (Zeebe)"]
+activate Payment
+
+alt [label: "Payment succeeds (80%)"] {
+  Payment > Zeebe: job complete (success) [color: red]
+  Payment > Kafka: PaymentReceivedEvent [color: blue, label: "event (Kafka)"]
+  deactivate Payment
+
+  Kafka > Notification: PaymentReceivedEvent [color: green, label: "event (choreography)"]
+  activate Notification
+  Notification > Notification: payment confirmed email
+  deactivate Notification
+
+  // payment-process ends, call activity returns to signup-process
+  Zeebe > Signup: 8. activate-account [color: red, label: "command"]
+  activate Signup
+  Signup > Zeebe: job complete [color: red]
+  Signup > Kafka: AccountActivatedEvent [color: blue, label: "event"]
+  deactivate Signup
+}
+else [label: "Payment fails (20%)"] {
+  Payment > Zeebe: job failed (PaymentProcessingError) [color: red]
+  Payment > Kafka: PaymentFailedEvent [color: blue, label: "event"]
+  deactivate Payment
+
+  Zeebe > Zeebe: 8. timer boundary (5 min) or error boundary
+
+  // User task for retry decision
+  Zeebe > Tasklist [icon: camunda, color: grey]: Task_RetryDecision (user task)
+  activate Tasklist
+  Tasklist > Zeebe: retry=true or abandon [color: grey]
+  deactivate Tasklist
+}

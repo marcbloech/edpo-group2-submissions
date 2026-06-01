@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "PaymentSummary",
+  "namespace": "ch.unisg.worldpulse.streams.avro",
+  "fields": [
+    {"name": "userId", "type": "string"},
+    {"name": "totalPayments", "type": "long"},
+    {"name": "successfulPayments", "type": "long"},
+    {"name": "failedPayments", "type": "long"},
+    {"name": "lastPaymentStatus", "type": "string"},
+    {"name": "lastPaymentTimestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+  ]
+}

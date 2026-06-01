@@ -16,12 +16,16 @@ public class ValidateSignupWorker {
   public Map<String, Object> handle(ActivatedJob job) {
     Map<String, Object> vars = job.getVariablesAsMap();
 
+    String userId = getString(vars, "userId");
     String name = getString(vars, "name");
     String email = getString(vars, "email");
     String tier = getString(vars, "tier").toUpperCase(Locale.ROOT);
     String traceid = getString(vars, "traceid");
     if (traceid.isBlank()) {
       traceid = UUID.randomUUID().toString();
+    }
+    if (userId.isBlank()) {
+      userId = UUID.randomUUID().toString();
     }
 
     if (name.isBlank()) {
@@ -35,7 +39,7 @@ public class ValidateSignupWorker {
     }
 
     return Map.of(
-        "userId", UUID.randomUUID().toString(),
+        "userId", userId,
         "traceid", traceid,
         "source", "WorldPulse-Signup",
         "tier", tier

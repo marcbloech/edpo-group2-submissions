@@ -1,0 +1,6 @@
+{
+  "type": "enum",
+  "name": "AssetCategory",
+  "namespace": "ch.unisg.worldpulse.streams.avro",
+  "symbols": ["STOCK", "COMMODITY", "CRYPTO", "SOCIAL_TOPIC"]
+}

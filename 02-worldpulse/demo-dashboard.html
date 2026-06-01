@@ -1,0 +1,2588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorldPulse — Stream Processing Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #ffffff;
+    --fg: #111111;
+    --muted: #888888;
+    --border: #e0e0e0;
+    --accent: #000000;
+    --tag-bg: #f5f5f5;
+    --success: #2d8a4e;
+    --danger: #c0392b;
+    --warn: #e67e22;
+    --card-hover: #fafafa;
+  }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Header ─────────────────────────────── */
+  header {
+    border-bottom: 2px solid var(--fg);
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span {
+    font-weight: 300;
+    color: var(--muted);
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .status-dot.online { background: var(--success); }
+  .status-dot.offline { background: var(--danger); }
+  .status-dot.loading { background: var(--warn); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Main layout ────────────────────────── */
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 32px 40px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title.collapsible {
+    cursor: pointer;
+    user-select: none;
+  }
+  .section-title.collapsible::before {
+    content: '▾ ';
+    display: inline-block;
+    transition: transform 0.15s;
+  }
+  .section-title.collapsible.collapsed::before {
+    transform: rotate(-90deg);
+  }
+  .section-title.collapsible.collapsed + * {
+    display: none;
+  }
+
+  /* ── Stats row ──────────────────────────── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+
+  .stat-card {
+    background: var(--bg);
+    padding: 24px;
+    transition: background 0.2s;
+  }
+
+  .stat-card:hover {
+    background: var(--card-hover);
+  }
+
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -1px;
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── Grid sections ──────────────────────── */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 40px;
+  }
+
+  @media (max-width: 900px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  .grid-3-sparkline {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 40px;
+  }
+
+  @media (max-width: 1100px) {
+    .grid-3-sparkline { grid-template-columns: 1fr; }
+  }
+
+  /* ── Sparklines ─────────────────────────── */
+  .sparkline-list {
+    border: 1px solid var(--border);
+  }
+
+  .sparkline-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 40px;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+
+  .sparkline-row:last-child { border-bottom: none; }
+
+  .sparkline-key {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 500;
+  }
+
+  .sparkline-total {
+    text-align: right;
+    font-weight: 600;
+    color: var(--fg);
+  }
+
+  .sparkline-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  /* ── User detail modal ──────────────────── */
+  .user-row:hover { background: var(--card-hover); }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+  }
+
+  .modal-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    width: 100%;
+    max-width: 720px;
+    max-height: 86vh;
+    overflow-y: auto;
+    padding: 32px;
+    position: relative;
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--muted);
+    line-height: 1;
+  }
+
+  .modal-close:hover { color: var(--fg); }
+
+  .modal-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    margin-top: 20px;
+  }
+
+  .modal-block {
+    border: 1px solid var(--border);
+    padding: 16px;
+  }
+
+  .modal-block-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .modal-block-body {
+    font-size: 12px;
+  }
+
+  .modal-block-body .kv {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .modal-block-body .kv:last-child { border-bottom: none; }
+  .modal-block-body .kv .k { color: var(--muted); font-size: 11px; }
+  .modal-block-body .kv .v { font-weight: 500; word-break: break-word; }
+
+  .modal-footnote {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .modal-footnote code {
+    background: var(--tag-bg);
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  /* ── Table ──────────────────────────────── */
+  .table-wrap {
+    border: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  th {
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--fg);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tr:hover td {
+    background: var(--card-hover);
+  }
+
+  /* ── Tags / badges ─────────────────────── */
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .tag.success {
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  .tag.danger {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .tag.warn {
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+
+  .tag.neutral {
+    border-color: var(--muted);
+    color: var(--muted);
+  }
+
+  /* ── Bar chart (pure CSS) ───────────────── */
+  .bar-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border: 1px solid var(--border);
+  }
+
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .bar-label {
+    width: 80px;
+    font-size: 11px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .bar-track {
+    flex: 1;
+    height: 20px;
+    background: var(--tag-bg);
+    position: relative;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: var(--fg);
+    transition: width 0.6s ease;
+    min-width: 1px;
+  }
+
+  .bar-track.green .bar-fill { background: var(--success); }
+  .bar-track.yellow .bar-fill { background: var(--warn); }
+  .bar-track.red .bar-fill { background: var(--danger); }
+
+  .bar-value {
+    width: 50px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* ── Event feed ─────────────────────────── */
+  .feed {
+    border: 1px solid var(--border);
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
+  .feed-item {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    transition: background 0.15s;
+  }
+
+  .feed-item:hover {
+    background: var(--card-hover);
+  }
+
+  .feed-time {
+    color: var(--muted);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .feed-text {
+    flex: 1;
+  }
+
+  /* ── Empty / error states ───────────────── */
+  .empty-state {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    border: 1px dashed var(--border);
+  }
+
+  .error-banner {
+    padding: 12px 16px;
+    font-size: 12px;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    margin-bottom: 24px;
+    display: none;
+  }
+
+  /* ── Footer ─────────────────────────────── */
+  footer {
+    padding: 24px 40px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ── Topology mini ──────────────────────── */
+  .topology {
+    font-size: 11px;
+    line-height: 2;
+    padding: 16px;
+    border: 1px solid var(--border);
+    background: var(--tag-bg);
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  /* ── Refresh indicator ──────────────────── */
+  .refresh-bar {
+    height: 2px;
+    background: var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .refresh-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: var(--fg);
+    animation: sweep 3s linear infinite;
+  }
+
+  @keyframes sweep {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+  /* ── Config bar ─────────────────────────── */
+  .config-bar {
+    padding: 12px 40px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11px;
+    background: var(--tag-bg);
+  }
+
+  .config-bar label {
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 10px;
+  }
+
+  .config-bar input, .config-bar select {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    outline: none;
+  }
+
+  .config-bar input:focus, .config-bar select:focus {
+    border-color: var(--fg);
+  }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 6px 16px;
+    border: 1px solid var(--fg);
+    background: var(--fg);
+    color: var(--bg);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn:hover {
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  .btn.outline {
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  .btn.outline:hover {
+    background: var(--fg);
+    color: var(--bg);
+  }
+
+  /* ── Tabs ───────────────────────────────── */
+  .tabs {
+    display: flex;
+    border-bottom: 2px solid var(--fg);
+  }
+
+  .tab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 12px 32px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+  }
+
+  .tab:hover { color: var(--fg); }
+
+  .tab.active {
+    color: var(--fg);
+    border-bottom-color: var(--fg);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Scenario cards ─────────────────────── */
+  .scenario-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .scenario-card {
+    border: 1px solid var(--border);
+    padding: 20px;
+    transition: all 0.15s;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .scenario-card:hover {
+    border-color: var(--fg);
+  }
+
+  .scenario-card.running {
+    border-color: var(--warn);
+  }
+
+  .scenario-card .scenario-name {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .scenario-card .scenario-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .scenario-card .scenario-meta {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .scenario-card .scenario-status {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+
+  .scenario-info-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: help;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    z-index: 2;
+  }
+  .scenario-info-btn:hover {
+    border-color: var(--fg);
+    color: var(--fg);
+  }
+
+  .scenario-tooltip {
+    display: none;
+    position: absolute;
+    bottom: 38px;
+    right: 0;
+    width: 340px;
+    padding: 14px 16px;
+    background: var(--bg);
+    border: 1px solid var(--fg);
+    z-index: 10;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--fg);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+  .scenario-tooltip.visible { display: block; }
+
+  .scenario-tooltip .tip-section {
+    margin-bottom: 8px;
+  }
+  .scenario-tooltip .tip-section:last-child { margin-bottom: 0; }
+  .scenario-tooltip .tip-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .scenario-tooltip .tip-events {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .scenario-tooltip .tip-tag {
+    font-size: 9px;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    letter-spacing: 0.5px;
+  }
+  .scenario-tooltip .tip-tag.market { border-color: var(--danger); color: var(--danger); }
+  .scenario-tooltip .tip-tag.social { border-color: var(--warn); color: var(--warn); }
+  .scenario-tooltip .tip-tag.signup { border-color: var(--success); color: var(--success); }
+  .scenario-tooltip .tip-tag.login  { border-color: #8b5cf6; color: #8b5cf6; }
+
+  .dev-config {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    font-size: 11px;
+  }
+
+  .dev-config label {
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 10px;
+  }
+
+  .dev-config input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    outline: none;
+    width: 80px;
+  }
+
+  .dev-log {
+    border: 1px solid var(--border);
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 11px;
+  }
+
+  .dev-log-item {
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .dev-log-item.ok { color: var(--success); }
+  .dev-log-item.err { color: var(--danger); }
+  .dev-log-item.info { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
+<header>
+  <div class="logo">WorldPulse <span>/ stream dashboard</span></div>
+  <div class="header-meta">
+    <span><span class="status-dot loading" id="statusDot"></span><span id="statusText">connecting...</span></span>
+    <span id="uptimeText">&mdash;</span>
+    <span id="clockText"></span>
+  </div>
+</header>
+
+<div class="refresh-bar"></div>
+
+<!-- ═══ CONFIG BAR ═══════════════════════════════════════════════════════════ -->
+<div class="config-bar">
+  <label>api</label>
+  <input type="text" id="apiBase" value="http://localhost:8097" style="width:220px">
+  <label>poll</label>
+  <select id="pollInterval">
+    <option value="2000">2s</option>
+    <option value="3000" selected>3s</option>
+    <option value="5000">5s</option>
+    <option value="10000">10s</option>
+  </select>
+  <button class="btn" id="refreshBtn">refresh now</button>
+  <button class="btn outline" id="pauseBtn">pause</button>
+</div>
+
+<!-- ═══ TABS ════════════════════════════════════════════════════════════════ -->
+<div class="tabs">
+  <button class="tab active" id="tabDashboard">Dashboard</button>
+  <button class="tab" id="tabUser">User View</button>
+  <button class="tab" id="tabDeveloper">Developer</button>
+</div>
+
+<!-- ═══ ERROR BANNER ════════════════════════════════════════════════════════ -->
+<div class="error-banner" id="errorBanner"></div>
+
+<!-- ═══ USER VIEW PANEL ════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="panelUser" style="max-width:1400px;margin:0 auto;padding:32px 40px">
+
+  <div class="grid-2">
+    <!-- ── Sign Up ─────────────────────────────────────── -->
+    <div>
+      <div class="section-title">create account</div>
+      <div style="border:1px solid var(--border);padding:24px">
+        <div style="display:flex;flex-direction:column;gap:12px;font-size:12px">
+          <div>
+            <label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">name</label>
+            <input type="text" id="userSignupName" placeholder="Jane Doe" style="font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;border:1px solid var(--border);width:100%;outline:none">
+          </div>
+          <div>
+            <label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">email</label>
+            <input type="email" id="userSignupEmail" placeholder="jane@example.com" style="font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;border:1px solid var(--border);width:100%;outline:none">
+          </div>
+          <div>
+            <label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px">tier</label>
+            <select id="userSignupTier" style="font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;border:1px solid var(--border);width:100%;outline:none;background:var(--bg)">
+              <option value="FREE">FREE</option>
+              <option value="BASIC">BASIC</option>
+              <option value="PREMIUM" selected>PREMIUM</option>
+              <option value="ENTERPRISE">ENTERPRISE</option>
+            </select>
+          </div>
+          <button class="btn" id="userSignupBtn" style="margin-top:4px">sign up</button>
+          <div id="userSignupResult" style="font-size:11px;color:var(--muted);min-height:20px"></div>
+        </div>
+      </div>
+
+      <!-- ── My Account ────────────────────────────────── -->
+      <div class="section-title" style="margin-top:32px">my account</div>
+      <div style="border:1px solid var(--border);padding:24px">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input type="text" id="userLookupId" placeholder="user-abc123" style="font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;border:1px solid var(--border);flex:1;outline:none">
+          <button class="btn" id="userLookupBtn">look up</button>
+        </div>
+        <div id="userLookupResult"></div>
+      </div>
+    </div>
+
+    <!-- ── My Watchlist ────────────────────────────────── -->
+    <div>
+      <div class="section-title">my watchlist &middot; live alerts</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input type="text" id="watchlistInput" placeholder="add symbol (e.g. AAPL)" style="font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 12px;border:1px solid var(--border);flex:1;outline:none">
+        <button class="btn" id="watchlistAddBtn">add</button>
+      </div>
+      <div id="watchlistSymbols" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>symbol</th>
+              <th>window</th>
+              <th>alerts</th>
+              <th>avg change%</th>
+              <th>risk</th>
+            </tr>
+          </thead>
+          <tbody id="watchlistTableBody">
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-title" style="margin-top:32px">signup activity &middot; by tier</div>
+      <div class="bar-chart" id="userSignupChart"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DEVELOPER PANEL ════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="panelDeveloper" style="max-width:1400px;margin:0 auto;padding:32px 40px">
+
+  <div class="section-title collapsible">scenario triggers</div>
+
+  <div class="dev-config">
+    <label>injector api</label>
+    <input type="text" id="injectorBase" value="http://localhost:8112" style="width:220px">
+    <label>burst size</label>
+    <input type="number" id="burstSize" value="1" min="1" max="20">
+    <span class="status-dot loading" id="injectorDot"></span>
+    <span id="injectorStatus" style="font-size:11px;color:var(--muted)">checking...</span>
+  </div>
+
+  <div class="scenario-grid" id="scenarioGrid"></div>
+
+  <div class="section-title collapsible">injector log</div>
+  <div class="dev-log" id="devLog"></div>
+
+</div>
+
+<main class="tab-panel active" id="panelDashboard">
+
+  <!-- ═══ TOP STATS ═══════════════════════════════════════════════════════ -->
+  <div class="section-title collapsible">overview</div>
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">total users</div>
+      <div class="stat-value" id="totalUsers">&mdash;</div>
+      <div class="stat-sub" id="totalUsersSub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">payments processed</div>
+      <div class="stat-value" id="totalPayments">&mdash;</div>
+      <div class="stat-sub" id="paymentsSub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">success rate</div>
+      <div class="stat-value" id="successRate">&mdash;</div>
+      <div class="stat-sub" id="successRateSub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">lifecycle events</div>
+      <div class="stat-value" id="totalEvents">&mdash;</div>
+      <div class="stat-sub" id="totalEventsSub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">alert windows</div>
+      <div class="stat-value" id="alertWindowCount">&mdash;</div>
+      <div class="stat-sub">last hour</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">topology state</div>
+      <div class="stat-value" id="topoState" style="font-size:18px">&mdash;</div>
+      <div class="stat-sub" id="topoStateSub"></div>
+    </div>
+  </div>
+
+  <!-- ═══ GLOBE ══════════════════════════════════════════════════════════ -->
+  <div class="section-title collapsible">world &middot; live logins by location</div>
+  <div id="globeContainer" style="width:100%;height:500px;background:#000;border:1px solid var(--border);position:relative;overflow:hidden;transition:background 0.5s ease">
+    <div id="globeViewport" style="width:100%;height:100%"></div>
+    <div id="globeLegend" style="position:absolute;top:12px;left:14px;color:#fff;font-size:11px;letter-spacing:0.5px;text-transform:uppercase;opacity:0.8;transition:color 0.3s ease">
+      logins / location &middot; <span id="globeTotal">0</span> in last window
+    </div>
+    <button id="globeThemeToggle" onclick="toggleGlobeTheme()" style="
+      position:absolute;top:12px;right:14px;
+      background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);
+      color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px;
+      letter-spacing:0.5px;text-transform:uppercase;
+      padding:5px 12px;cursor:pointer;border-radius:3px;
+      transition:all 0.3s ease;backdrop-filter:blur(4px)
+    " onmouseover="this.style.background='rgba(255,255,255,0.25)'" onmouseout="updateToggleHover(this)">
+&#9788; light mode</button>
+  </div>
+
+  <!-- ═══ USERS + TIER DISTRIBUTION ══════════════════════════════════════ -->
+  <div class="section-title collapsible">user dashboard &middot; ktable join + tier distribution</div>
+  <div class="grid-2">
+    <div>
+      <div class="section-title" style="font-size:10px;border:none;margin-bottom:8px">user dashboard (ktable join)</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>user</th>
+              <th>tier</th>
+              <th>events</th>
+              <th>last event</th>
+              <th>payments</th>
+              <th>status</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">tier distribution</div>
+      <div class="bar-chart" id="tierChart"></div>
+
+      <div class="section-title" style="margin-top:32px">payment health per user</div>
+      <div class="bar-chart" id="paymentChart"></div>
+    </div>
+  </div>
+
+  <!-- ═══ WINDOWED STATS ═════════════════════════════════════════════════ -->
+  <div class="section-title collapsible">windowed aggregations</div>
+  <div class="grid-2">
+    <div>
+      <div class="section-title" style="font-size:10px;border:none;margin-bottom:8px">alert stats &middot; 1-min tumbling</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>symbol</th>
+              <th>window</th>
+              <th>count</th>
+              <th>avg change%</th>
+              <th>risk</th>
+            </tr>
+          </thead>
+          <tbody id="alertTableBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title" style="font-size:10px;border:none;margin-bottom:8px">login stats &middot; 30s tumbling (production: 1hr)</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>location</th>
+              <th>window</th>
+              <th>logins</th>
+            </tr>
+          </thead>
+          <tbody id="loginTableBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TRENDS — sparklines across recent windows ═════════════════════ -->
+  <div class="section-title collapsible">trends &middot; last 10 windows</div>
+  <div class="grid-3-sparkline">
+    <div>
+      <div class="section-title" style="font-size:10px;border:none;margin-bottom:8px">alerts &middot; by symbol/topic</div>
+      <div id="alertSparkBody" class="sparkline-list"></div>
+    </div>
+    <div>
+      <div class="section-title" style="font-size:10px;border:none;margin-bottom:8px">signups &middot; by tier (suppress: final per window)</div>
+      <div id="signupSparkBody" class="sparkline-list"></div>
+    </div>
+    <div>
+      <div class="section-title" style="font-size:10px;border:none;margin-bottom:8px">logins &middot; by location (no suppress: live)</div>
+      <div id="loginSparkBody" class="sparkline-list"></div>
+    </div>
+  </div>
+
+  <!-- ═══ CORRELATED ALERTS (KStream-KStream windowed join) ══════════════ -->
+  <div class="section-title collapsible">correlated alerts &middot; kstream-kstream join (5-min window)</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>sector</th>
+          <th>market symbol</th>
+          <th>market</th>
+          <th>social topic</th>
+          <th>social</th>
+          <th>when</th>
+        </tr>
+      </thead>
+      <tbody id="correlatedTableBody">
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ CORRELATED ALERT SUMMARY (C7 — windowed aggregation with suppress) ═══ -->
+  <div class="section-title collapsible">correlated alert summary &middot; windowed aggregation (30s, suppressed)</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>sector</th>
+          <th>matches</th>
+          <th>market symbols</th>
+          <th>social topics</th>
+          <th>max change</th>
+          <th>risk</th>
+          <th>window</th>
+        </tr>
+      </thead>
+      <tbody id="correlatedSummaryBody">
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ EVENT LOG ══════════════════════════════════════════════════════ -->
+  <div class="section-title collapsible">event feed &middot; latest changes</div>
+  <div class="feed" id="eventFeed"></div>
+
+  <!-- ═══ TOPOLOGY ═══════════════════════════════════════════════════════ -->
+  <!--  not needed -->
+
+</main>
+
+<footer>
+  <span>WorldPulse &middot; EDPO Group 2 &middot; University of St.Gallen &middot; FS2026</span>
+  <span id="lastUpdate">never updated</span>
+</footer>
+
+<!-- ═══ USER DETAIL MODAL ════════════════════════════════════════════ -->
+<div id="userModal" class="modal-overlay" style="display:none">
+  <div class="modal-card">
+    <button class="modal-close" id="userModalClose" aria-label="Close">&times;</button>
+    <div class="section-title" id="userModalTitle">user detail</div>
+
+    <div class="modal-grid">
+      <div class="modal-block">
+        <div class="modal-block-label">profile</div>
+        <div class="modal-block-body" id="userModalProfile"></div>
+      </div>
+
+      <div class="modal-block">
+        <div class="modal-block-label">user-activity store (ktable)</div>
+        <div class="modal-block-body" id="userModalActivity"></div>
+      </div>
+
+      <div class="modal-block">
+        <div class="modal-block-label">payment-history store (ktable)</div>
+        <div class="modal-block-body" id="userModalPayments"></div>
+      </div>
+    </div>
+
+    <div class="modal-footnote">
+      data pulled live from KafkaStreams state stores via interactive queries:
+      <code>/api/users/{id}</code>, <code>/api/users/{id}/activity</code>, <code>/api/users/{id}/payments</code>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/globe.gl@2.27.4/dist/globe.gl.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Collapsible sections
+  // ═══════════════════════════════════════════════════════════════════════════
+  document.querySelectorAll('.section-title.collapsible').forEach(function(el) {
+    el.addEventListener('click', function() { el.classList.toggle('collapsed'); });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // State
+  // ═══════════════════════════════════════════════════════════════════════════
+  var paused = false;
+  var timer = null;
+  var eventLog = [];
+  var previousUsers = {};
+  var SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'CL=F', 'XOM', 'BTC-USD', 'ETH-USD', 'NVDA'];
+  // Matches login_generator.py:21 — the only cities the generator ever emits.
+  var LOCATIONS = ['Zurich', 'Geneva', 'New York', 'London', 'Tokyo', 'Singapore'];
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Safe DOM helpers — avoid raw innerHTML for security
+  // ═══════════════════════════════════════════════════════════════════════════
+  function clearChildren(el) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+  }
+
+  function createEl(tag, attrs, children) {
+    var el = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function(k) {
+        if (k === 'textContent') { el.textContent = attrs[k]; }
+        else if (k === 'className') { el.className = attrs[k]; }
+        else if (k === 'style' && typeof attrs[k] === 'object') {
+          Object.keys(attrs[k]).forEach(function(s) { el.style[s] = attrs[k][s]; });
+        } else { el.setAttribute(k, attrs[k]); }
+      });
+    }
+    if (children) {
+      children.forEach(function(c) {
+        if (typeof c === 'string') el.appendChild(document.createTextNode(c));
+        else if (c) el.appendChild(c);
+      });
+    }
+    return el;
+  }
+
+  function setText(id, text) {
+    document.getElementById(id).textContent = text;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Clock
+  // ═══════════════════════════════════════════════════════════════════════════
+  function updateClock() {
+    setText('clockText', new Date().toLocaleTimeString('en-GB', { hour12: false }));
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // API helpers
+  // ═══════════════════════════════════════════════════════════════════════════
+  function apiBase() { return document.getElementById('apiBase').value.replace(/\/+$/, ''); }
+
+  function fetchJson(path) {
+    return fetch(apiBase() + path).then(function(res) {
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      return res.json();
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Fetch all endpoints
+  // ═══════════════════════════════════════════════════════════════════════════
+  function fetchAll() {
+    var banner = document.getElementById('errorBanner');
+
+    Promise.all([
+      fetchJson('/api/status'),
+      fetchJson('/api/users').catch(function() { return []; })
+    ]).then(function(results) {
+      var status = results[0];
+      var users = results[1];
+
+      banner.style.display = 'none';
+      updateStatusUI(status);
+      updateUsers(users);
+      updateStats(users);
+
+      fetchAlertStats();
+      fetchLoginStats();
+      fetchCorrelatedAlerts();
+      fetchCorrelatedAlertsSummary();
+      fetchGlobeLogins();
+      fetchSparklines();
+
+      setText('lastUpdate', 'updated ' + new Date().toLocaleTimeString('en-GB', { hour12: false }));
+    }).catch(function(e) {
+      banner.textContent = 'connection error: ' + e.message + ' — retrying...';
+      banner.style.display = 'block';
+      setStatusIndicator('offline', 'disconnected');
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Status
+  // ═══════════════════════════════════════════════════════════════════════════
+  function setStatusIndicator(state, text) {
+    document.getElementById('statusDot').className = 'status-dot ' + state;
+    setText('statusText', text);
+  }
+
+  function updateStatusUI(data) {
+    var state = data.analyticsTopologyState || 'UNKNOWN';
+    if (state === 'RUNNING') {
+      setStatusIndicator('online', 'running');
+    } else {
+      setStatusIndicator('loading', state.toLowerCase());
+    }
+    setText('uptimeText', 'up ' + formatDuration(data.uptimeSeconds || 0));
+    setText('topoState', state);
+    setText('topoStateSub', (data.storeNames || []).length + ' state stores');
+  }
+
+  function formatDuration(seconds) {
+    if (seconds < 60) return seconds + 's';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    return h + 'h ' + m + 'm';
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User dashboard table
+  // ═══════════════════════════════════════════════════════════════════════════
+  function tierClass(tier) {
+    if (!tier) return 'neutral';
+    var t = tier.toUpperCase();
+    if (t === 'PREMIUM' || t === 'GOLD') return 'warn';
+    if (t === 'ENTERPRISE' || t === 'PLATINUM') return 'success';
+    return 'neutral';
+  }
+
+  function updateUsers(users) {
+    var tbody = document.getElementById('userTableBody');
+    clearChildren(tbody);
+
+    if (!users.length) {
+      var emptyRow = createEl('tr', {}, [
+        createEl('td', { colspan: '6', className: 'empty-state', textContent: 'no users in state store yet — trigger signups to populate' })
+      ]);
+      tbody.appendChild(emptyRow);
+      return;
+    }
+
+    users.forEach(function(u) {
+      var prev = previousUsers[u.userId];
+      if (!prev) {
+        addEvent('signup', u.userId + ' appeared in dashboard (' + (u.currentTier || '?') + ')');
+      } else {
+        if (prev.currentTier !== u.currentTier)
+          addEvent('upgrade', u.userId + ': ' + prev.currentTier + ' → ' + u.currentTier);
+        if (prev.totalPayments !== u.totalPayments)
+          addEvent('payment', u.userId + ': payment #' + u.totalPayments + ' (' + u.lastPaymentStatus + ')');
+        if (prev.lifecycleEventCount !== u.lifecycleEventCount)
+          addEvent('lifecycle', u.userId + ': event #' + u.lifecycleEventCount + ' (' + u.lastLifecycleEvent + ')');
+      }
+      previousUsers[u.userId] = JSON.parse(JSON.stringify(u));
+
+      var paymentStatusClass = u.lastPaymentStatus === 'SUCCESS' ? 'success' :
+                               u.lastPaymentStatus === 'FAILED' ? 'danger' : 'neutral';
+
+      var row = createEl('tr', { className: 'user-row', 'data-userid': u.userId }, [
+        createEl('td', {}, [
+          createEl('strong', { textContent: u.userId || '' }),
+          createEl('br'),
+          createEl('span', { style: { color: 'var(--muted)', fontSize: '10px' }, textContent: u.email || '' })
+        ]),
+        createEl('td', {}, [
+          createEl('span', { className: 'tag ' + tierClass(u.currentTier), textContent: u.currentTier || '—' })
+        ]),
+        createEl('td', { textContent: String(u.lifecycleEventCount || 0) }),
+        createEl('td', { textContent: u.lastLifecycleEvent || '—' }),
+        createEl('td', { textContent: (u.successfulPayments || 0) + ' / ' + (u.totalPayments || 0) }),
+        createEl('td', {}, [
+          createEl('span', { className: 'tag ' + paymentStatusClass, textContent: u.lastPaymentStatus || '—' })
+        ])
+      ]);
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', function() { openUserDetail(u.userId); });
+      tbody.appendChild(row);
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Stats
+  // ═══════════════════════════════════════════════════════════════════════════
+  function updateStats(users) {
+    setText('totalUsers', String(users.length));
+
+    var totalPayments = 0, successPayments = 0, failedPayments = 0, totalLifecycle = 0;
+    var tiers = {};
+    users.forEach(function(u) {
+      totalPayments += (u.totalPayments || 0);
+      successPayments += (u.successfulPayments || 0);
+      failedPayments += (u.failedPayments || 0);
+      totalLifecycle += (u.lifecycleEventCount || 0);
+      var t = (u.currentTier || 'unknown').toUpperCase();
+      tiers[t] = (tiers[t] || 0) + 1;
+    });
+
+    setText('totalPayments', String(totalPayments));
+    setText('paymentsSub', successPayments + ' ok · ' + failedPayments + ' failed');
+
+    var rate = totalPayments > 0 ? Math.round((successPayments / totalPayments) * 100) : 0;
+    setText('successRate', totalPayments > 0 ? rate + '%' : '—');
+    setText('successRateSub', totalPayments > 0 ? successPayments + ' of ' + totalPayments : '');
+
+    setText('totalEvents', String(totalLifecycle));
+
+    // Tier distribution chart
+    var tierChart = document.getElementById('tierChart');
+    clearChildren(tierChart);
+    var tierEntries = Object.entries(tiers).sort(function(a, b) { return b[1] - a[1]; });
+    var maxTier = Math.max.apply(null, tierEntries.map(function(e) { return e[1]; }).concat([1]));
+
+    if (tierEntries.length === 0) {
+      tierChart.appendChild(createEl('div', { className: 'empty-state', textContent: 'waiting for data...' }));
+    } else {
+      tierEntries.forEach(function(entry) {
+        var t = entry[0], c = entry[1];
+        var fillDiv = createEl('div', { className: 'bar-fill' });
+        fillDiv.style.width = ((c / maxTier) * 100) + '%';
+        tierChart.appendChild(createEl('div', { className: 'bar-row' }, [
+          createEl('div', { className: 'bar-label', textContent: t }),
+          createEl('div', { className: 'bar-track' }, [fillDiv]),
+          createEl('div', { className: 'bar-value', textContent: String(c) })
+        ]));
+      });
+    }
+
+    // Payment chart
+    var paymentChart = document.getElementById('paymentChart');
+    clearChildren(paymentChart);
+    if (users.length === 0) {
+      paymentChart.appendChild(createEl('div', { className: 'empty-state', textContent: 'waiting for data...' }));
+    } else {
+      users.slice(0, 8).forEach(function(u) {
+        var total = u.totalPayments || 0;
+        var ok = u.successfulPayments || 0;
+        var pct = total > 0 ? (ok / total) * 100 : 0;
+        var colorClass = pct >= 80 ? 'green' : (pct >= 50 ? 'yellow' : 'red');
+        var fillDiv = createEl('div', { className: 'bar-fill' });
+        fillDiv.style.width = pct + '%';
+        paymentChart.appendChild(createEl('div', { className: 'bar-row' }, [
+          createEl('div', { className: 'bar-label', textContent: (u.userId || '').substring(0, 10) }),
+          createEl('div', { className: 'bar-track ' + colorClass }, [fillDiv]),
+          createEl('div', { className: 'bar-value', textContent: ok + '/' + total })
+        ]));
+      });
+    }
+
+    // User sub
+    var tierList = tierEntries.map(function(e) { return e[1] + ' ' + e[0].toLowerCase(); }).join(' · ');
+    setText('totalUsersSub', tierList);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Alert stats (windowed)
+  // ═══════════════════════════════════════════════════════════════════════════
+  function riskClass(level) {
+    if (!level) return 'neutral';
+    if (level === 'HIGH' || level === 'CRITICAL') return 'danger';
+    if (level === 'MEDIUM') return 'warn';
+    return 'neutral';
+  }
+
+  function fmtTime(epochMs) {
+    var d = new Date(epochMs);
+    return d.toLocaleTimeString('en-GB', { hour12: false }) +
+      ' ' + d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+  }
+
+  function fetchAlertStats() {
+    var tbody = document.getElementById('alertTableBody');
+    var allAlerts = [];
+    var queries = SYMBOLS.concat(['crypto crash', 'AI regulation', 'climate summit', 'Iran oil strike', 'oil prices', 'Grok-X release']);
+    var promises = queries.map(function(q) {
+      return fetchJson('/api/alerts/stats/' + encodeURIComponent(q)).catch(function() { return []; });
+    });
+
+    Promise.all(promises).then(function(results) {
+      results.forEach(function(data) {
+        data.forEach(function(w) { allAlerts.push(w); });
+      });
+
+      setText('alertWindowCount', String(allAlerts.length));
+      clearChildren(tbody);
+
+      if (allAlerts.length === 0) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', { colspan: '5', className: 'empty-state', textContent: 'no alert windows — run demo-injector to generate alerts' })
+        ]));
+        return;
+      }
+
+      allAlerts.sort(function(a, b) { return b.windowStart - a.windowStart; });
+      allAlerts.slice(0, 20).forEach(function(w) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', {}, [createEl('strong', { textContent: w.symbolOrTopic || '' })]),
+          createEl('td', { style: { fontSize: '10px' }, textContent: fmtTime(w.windowStart) }),
+          createEl('td', { textContent: String(w.alertCount) }),
+          createEl('td', { textContent: ((w.avgChangePercent || 0).toFixed(2)) + '%' }),
+          createEl('td', {}, [
+            createEl('span', { className: 'tag ' + riskClass(w.lastRiskLevel), textContent: w.lastRiskLevel || '—' })
+          ])
+        ]));
+      });
+    }).catch(function() {
+      setText('alertWindowCount', '—');
+      clearChildren(tbody);
+      tbody.appendChild(createEl('tr', {}, [
+        createEl('td', { colspan: '5', className: 'empty-state', textContent: 'alert-stats store not available' })
+      ]));
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Login stats (windowed)
+  // ═══════════════════════════════════════════════════════════════════════════
+  function fetchLoginStats() {
+    var tbody = document.getElementById('loginTableBody');
+    var promises = LOCATIONS.map(function(loc) {
+      return fetchJson('/api/logins/stats/' + encodeURIComponent(loc)).catch(function() { return []; });
+    });
+
+    Promise.all(promises).then(function(results) {
+      var allLogins = [];
+      results.forEach(function(data) {
+        data.forEach(function(w) { allLogins.push(w); });
+      });
+
+      clearChildren(tbody);
+      if (allLogins.length === 0) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', { colspan: '3', className: 'empty-state', textContent: 'no login windows — start login-generator' })
+        ]));
+        return;
+      }
+
+      allLogins.sort(function(a, b) { return b.windowStart - a.windowStart; });
+      allLogins.slice(0, 15).forEach(function(w) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', {}, [createEl('strong', { textContent: w.location || '' })]),
+          createEl('td', { style: { fontSize: '10px' }, textContent: fmtTime(w.windowStart) }),
+          createEl('td', { textContent: String(w.loginCount) })
+        ]));
+      });
+    }).catch(function() {
+      clearChildren(tbody);
+      tbody.appendChild(createEl('tr', {}, [
+        createEl('td', { colspan: '3', className: 'empty-state', textContent: 'login-stats store not available' })
+      ]));
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User detail modal
+  // ═══════════════════════════════════════════════════════════════════════════
+  function kvRow(key, value) {
+    return createEl('div', { className: 'kv' }, [
+      createEl('div', { className: 'k', textContent: key }),
+      createEl('div', { className: 'v', textContent: value == null || value === '' ? '—' : String(value) })
+    ]);
+  }
+
+  function openUserDetail(userId) {
+    var modal = document.getElementById('userModal');
+    var titleEl = document.getElementById('userModalTitle');
+    var profileEl = document.getElementById('userModalProfile');
+    var activityEl = document.getElementById('userModalActivity');
+    var paymentsEl = document.getElementById('userModalPayments');
+
+    titleEl.textContent = 'user · ' + userId;
+    clearChildren(profileEl);
+    clearChildren(activityEl);
+    clearChildren(paymentsEl);
+    profileEl.appendChild(createEl('div', { textContent: 'loading...', style: { color: 'var(--muted)' } }));
+
+    modal.style.display = 'flex';
+
+    // Three parallel fetches — the dashboard view (joined), the raw activity store,
+    // and the raw payment store.
+    Promise.all([
+      fetchJson('/api/users/' + encodeURIComponent(userId)).catch(function(e) { return { __error: e.message }; }),
+      fetchJson('/api/users/' + encodeURIComponent(userId) + '/activity').catch(function(e) { return { __error: e.message }; }),
+      fetchJson('/api/users/' + encodeURIComponent(userId) + '/payments').catch(function(e) { return { __error: e.message }; })
+    ]).then(function(results) {
+      var dash = results[0], act = results[1], pay = results[2];
+
+      // Profile (from /users/{id})
+      clearChildren(profileEl);
+      if (dash && !dash.__error) {
+        profileEl.appendChild(kvRow('user id', dash.userId));
+        profileEl.appendChild(kvRow('name', dash.name));
+        profileEl.appendChild(kvRow('email', dash.email));
+        profileEl.appendChild(kvRow('current tier', dash.currentTier));
+      } else {
+        profileEl.appendChild(createEl('div', { style: { color: 'var(--muted)' }, textContent: 'no dashboard record (user-dashboard store) — likely no payment events yet for this user' }));
+      }
+
+      // user-activity
+      clearChildren(activityEl);
+      if (act && !act.__error) {
+        activityEl.appendChild(kvRow('event count', act.eventCount));
+        activityEl.appendChild(kvRow('last event type', act.lastEventType));
+        activityEl.appendChild(kvRow('last event at', act.lastEventTimestamp));
+        activityEl.appendChild(kvRow('current tier', act.currentTier));
+      } else {
+        activityEl.appendChild(createEl('div', { style: { color: 'var(--muted)' }, textContent: 'no activity record' }));
+      }
+
+      // payment-history
+      clearChildren(paymentsEl);
+      if (pay && !pay.__error) {
+        paymentsEl.appendChild(kvRow('total payments', pay.totalPayments));
+        paymentsEl.appendChild(kvRow('successful', pay.successfulPayments));
+        paymentsEl.appendChild(kvRow('failed', pay.failedPayments));
+        paymentsEl.appendChild(kvRow('last status', pay.lastPaymentStatus));
+        paymentsEl.appendChild(kvRow('last payment at', pay.lastPaymentTimestamp));
+      } else {
+        paymentsEl.appendChild(createEl('div', { style: { color: 'var(--muted)' }, textContent: 'no payment history' }));
+      }
+    });
+  }
+
+  function closeUserDetail() {
+    document.getElementById('userModal').style.display = 'none';
+  }
+
+  document.getElementById('userModalClose').addEventListener('click', closeUserDetail);
+  document.getElementById('userModal').addEventListener('click', function(e) {
+    if (e.target === this) closeUserDetail();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeUserDetail();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Sparklines — last N windows per key
+  // ═══════════════════════════════════════════════════════════════════════════
+  function buildSparkline(values, color) {
+    // values: array of numbers (oldest → newest). Returns SVG element.
+    var width = 160, height = 24;
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.style.display = 'block';
+
+    if (!values.length) return svg;
+    var max = Math.max.apply(null, values.concat([1]));
+    var barW = Math.max(1, (width / values.length) - 2);
+    values.forEach(function(v, i) {
+      var h = Math.max(1, (v / max) * (height - 2));
+      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', i * (barW + 2));
+      rect.setAttribute('y', height - h);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', h);
+      rect.setAttribute('fill', color);
+      rect.setAttribute('opacity', v === 0 ? '0.2' : '1');
+      svg.appendChild(rect);
+    });
+    return svg;
+  }
+
+  function renderSparklinePanel(panelId, rows, color, emptyMsg) {
+    var container = document.getElementById(panelId);
+    if (!container) return;
+    clearChildren(container);
+
+    if (!rows.length) {
+      container.appendChild(createEl('div', { className: 'sparkline-empty', textContent: emptyMsg }));
+      return;
+    }
+
+    rows.forEach(function(r) {
+      var row = createEl('div', { className: 'sparkline-row' });
+      row.appendChild(createEl('div', { className: 'sparkline-key', textContent: r.key }));
+      var sparkWrap = createEl('div');
+      sparkWrap.appendChild(buildSparkline(r.values, color));
+      row.appendChild(sparkWrap);
+      var latest = r.values.length ? r.values[r.values.length - 1] : 0;
+      row.appendChild(createEl('div', { className: 'sparkline-total', textContent: String(latest) }));
+      container.appendChild(row);
+    });
+  }
+
+  // Group a list of {windowStart, <countField>, <keyField>} into {key → values[]}
+  // by sorting by windowStart and taking the last N per key.
+  function groupWindowsByKey(windows, keyField, countField, lastN) {
+    var byKey = {};
+    windows.forEach(function(w) {
+      var k = w[keyField];
+      if (!k) return;
+      (byKey[k] = byKey[k] || []).push({
+        t: w.windowStart || 0,
+        v: (w[countField] || 0)
+      });
+    });
+    var out = [];
+    Object.keys(byKey).forEach(function(k) {
+      var list = byKey[k].sort(function(a, b) { return a.t - b.t; }).slice(-lastN);
+      out.push({ key: k, values: list.map(function(p) { return p.v; }) });
+    });
+    // Sort: highest current value first
+    out.sort(function(a, b) {
+      return (b.values[b.values.length - 1] || 0) - (a.values[a.values.length - 1] || 0);
+    });
+    return out;
+  }
+
+  function fetchSparklines() {
+    // Alerts — query the same symbols/topics as the alert-stats table
+    var alertKeys = SYMBOLS.concat(['crypto crash', 'AI regulation', 'climate summit', 'Iran oil strike', 'oil prices', 'Grok-X release']);
+    var alertPromises = alertKeys.map(function(k) {
+      return fetchJson('/api/alerts/stats/' + encodeURIComponent(k))
+        .then(function(arr) { return arr.map(function(w) { return { symbolOrTopic: k, windowStart: w.windowStart, count: w.alertCount }; }); })
+        .catch(function() { return []; });
+    });
+    Promise.all(alertPromises).then(function(results) {
+      var all = [];
+      results.forEach(function(arr) { arr.forEach(function(w) { all.push(w); }); });
+      var rows = groupWindowsByKey(all, 'symbolOrTopic', 'count', 10);
+      renderSparklinePanel('alertSparkBody', rows, '#c0392b', 'no alert windows yet');
+    });
+
+    // Signups — query each tier
+    var tiers = ['FREE', 'BASIC', 'PREMIUM', 'ENTERPRISE'];
+    var signupPromises = tiers.map(function(t) {
+      return fetchJson('/api/signups/stats/' + t)
+        .then(function(arr) { return arr.map(function(w) { return { tier: t, windowStart: w.windowStart, count: (w.signupCount || w.count || 0) }; }); })
+        .catch(function() { return []; });
+    });
+    Promise.all(signupPromises).then(function(results) {
+      var all = [];
+      results.forEach(function(arr) { arr.forEach(function(w) { all.push(w); }); });
+      var rows = groupWindowsByKey(all, 'tier', 'count', 10);
+      renderSparklinePanel('signupSparkBody', rows, '#2d8a4e', 'no signup windows yet');
+    });
+
+    // Logins — query each city (use the globe's authoritative list, not the stale LOCATIONS array)
+    var loginPromises = Object.keys(GLOBE_CITIES).map(function(loc) {
+      return fetchJson('/api/logins/stats/' + encodeURIComponent(loc))
+        .then(function(arr) { return arr.map(function(w) { return { location: loc, windowStart: w.windowStart, count: (w.loginCount || w.count || 0) }; }); })
+        .catch(function() { return []; });
+    });
+    Promise.all(loginPromises).then(function(results) {
+      var all = [];
+      results.forEach(function(arr) { arr.forEach(function(w) { all.push(w); }); });
+      var rows = groupWindowsByKey(all, 'location', 'count', 10);
+      renderSparklinePanel('loginSparkBody', rows, '#1e6fbf', 'no login windows yet');
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Globe (live logins by location)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Lat/lon for the 6 cities the login-generator emits (login_generator.py:21).
+  var GLOBE_CITIES = {
+    'Zurich':    { lat: 47.3769,  lng: 8.5417   },
+    'Geneva':    { lat: 46.2044,  lng: 6.1432   },
+    'New York':  { lat: 40.7128,  lng: -74.0060 },
+    'London':    { lat: 51.5074,  lng: -0.1278  },
+    'Tokyo':     { lat: 35.6762,  lng: 139.6503 },
+    'Singapore': { lat: 1.3521,   lng: 103.8198 }
+  };
+
+  var globe = null;
+
+  function activityColor(count) {
+    if (count === 0)   return '#3a4a5a';
+    if (count >= 5)    return '#ff3b6b';
+    if (count >= 2)    return '#ffcc33';
+    return '#33d6ff';
+  }
+
+  function initGlobe() {
+    if (globe || typeof Globe === 'undefined') return;
+    var container = document.getElementById('globeViewport');
+    if (!container) return;
+
+    globe = Globe()(container)
+      .globeImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-night.jpg')
+      .bumpImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png')
+      .backgroundImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/night-sky.png')
+      .showAtmosphere(true)
+      .atmosphereColor('#7ecbff')
+      .atmosphereAltitude(0.22)
+      // Point markers (the dot itself)
+      .pointAltitude(function(d) { return d.altitude; })
+      .pointRadius(0.45)
+      .pointColor(function(d) { return d.color; })
+      .pointLabel(function(d) { return d.label; })
+      .pointsTransitionDuration(800)
+      // Pulsing rings on active cities
+      .ringColor(function(d) {
+        var c = d.color;
+        return function(t) { return c.replace(')', ',' + (1 - t) + ')').replace('rgb', 'rgba'); };
+      })
+      .ringMaxRadius(function(d) { return d.maxR; })
+      .ringPropagationSpeed(2)
+      .ringRepeatPeriod(function(d) { return d.period; })
+      // Arcs between active cities — hub-and-spoke from the busiest city
+      .arcsData([])
+      .arcStartLat(function(d) { return d.startLat; })
+      .arcStartLng(function(d) { return d.startLng; })
+      .arcEndLat(function(d) { return d.endLat; })
+      .arcEndLng(function(d) { return d.endLng; })
+      .arcColor(function(d) { return d.color; })
+      .arcAltitudeAutoScale(0.5)
+      .arcStroke(0.4)
+      .arcDashLength(0.4)
+      .arcDashGap(0.15)
+      .arcDashAnimateTime(2000)
+      .arcsTransitionDuration(0)
+      // Always-visible HTML labels next to each city
+      .labelsData([])
+      .labelLat(function(d) { return d.lat; })
+      .labelLng(function(d) { return d.lng; })
+      .labelText(function(d) { return d.text; })
+      .labelSize(function(d) { return d.size; })
+      .labelDotRadius(0)
+      .labelColor(function(d) { return d.color; })
+      .labelResolution(2)
+      .labelAltitude(0.01);
+
+    // Auto-rotate — slow, cinematic
+    var controls = globe.controls();
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.35;
+    controls.enableZoom = false;
+
+    // Nudge the starting camera to a slightly farther, more cinematic angle
+    globe.pointOfView({ lat: 25, lng: 10, altitude: 2.4 }, 0);
+
+    // Initial empty data so the canvas paints before the first fetch
+    globe.pointsData([]).ringsData([]).labelsData([]).arcsData([]);
+
+    // Make sure it sizes correctly to the container
+    function resize() {
+      globe.width(container.clientWidth);
+      globe.height(container.clientHeight);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+  }
+
+  // Globe theme toggle (dark ↔ light)
+  var globeLightMode = false;
+
+  function toggleGlobeTheme() {
+    if (!globe) return;
+    globeLightMode = !globeLightMode;
+
+    var container = document.getElementById('globeContainer');
+    var legend = document.getElementById('globeLegend');
+    var btn = document.getElementById('globeThemeToggle');
+
+    if (globeLightMode) {
+      globe
+        .globeImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg')
+        .bumpImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png')
+        .backgroundImageUrl('')
+        .atmosphereColor('#4a90d9')
+        .atmosphereAltitude(0.18);
+
+      var scene = globe.scene();
+      if (scene) {
+        var renderer = globe.renderer();
+        renderer.setClearColor(0xeef2f7, 1);
+        scene.background = null;
+      }
+
+      container.style.background = '#eef2f7';
+      legend.style.color = '#222';
+      btn.style.background = 'rgba(0,0,0,0.08)';
+      btn.style.borderColor = 'rgba(0,0,0,0.2)';
+      btn.style.color = '#222';
+      btn.textContent = '☾ dark mode';
+    } else {
+      globe
+        .globeImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-night.jpg')
+        .bumpImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png')
+        .backgroundImageUrl('https://unpkg.com/three-globe@2.31.1/example/img/night-sky.png')
+        .atmosphereColor('#7ecbff')
+        .atmosphereAltitude(0.22);
+
+      container.style.background = '#000';
+      legend.style.color = '#fff';
+      btn.style.background = 'rgba(255,255,255,0.15)';
+      btn.style.borderColor = 'rgba(255,255,255,0.3)';
+      btn.style.color = '#fff';
+      btn.textContent = '☆ light mode';
+    }
+  }
+
+  function updateToggleHover(el) {
+    if (globeLightMode) {
+      el.style.background = 'rgba(0,0,0,0.08)';
+    } else {
+      el.style.background = 'rgba(255,255,255,0.15)';
+    }
+  }
+  window.toggleGlobeTheme = toggleGlobeTheme;
+  window.updateToggleHover = updateToggleHover;
+
+  // Convert #rrggbb hex into rgb(r,g,b) so the ringColor closure can append alpha.
+  function hexToRgb(hex) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) {
+      h = h.split('').map(function(c) { return c + c; }).join('');
+    }
+    var n = parseInt(h, 16);
+    return 'rgb(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ')';
+  }
+
+  function fetchGlobeLogins() {
+    if (!globe) return;
+    var cities = Object.keys(GLOBE_CITIES);
+    var promises = cities.map(function(city) {
+      return fetchJson('/api/logins/stats/' + encodeURIComponent(city))
+        .catch(function() { return []; });
+    });
+
+    Promise.all(promises).then(function(results) {
+      var points = [];
+      var rings = [];
+      var labels = [];
+      var grandTotal = 0;
+
+      results.forEach(function(windows, i) {
+        var city = cities[i];
+        var coords = GLOBE_CITIES[city];
+        var count = 0;
+        windows.forEach(function(w) { count += (w.loginCount || w.count || 0); });
+        grandTotal += count;
+
+        var hex = activityColor(count);
+
+        // Marker dot — altitude scales with count
+        points.push({
+          lat: coords.lat,
+          lng: coords.lng,
+          altitude: Math.min(0.05 + count * 0.025, 0.6),
+          color: hex,
+          label: globeLightMode
+            ? '<div style="background:rgba(255,255,255,0.95);color:#111;padding:6px 10px;border:1px solid #ccc;font-family:monospace;font-size:11px;letter-spacing:0.5px;box-shadow:0 2px 8px rgba(0,0,0,0.15)"><strong>' + city.toUpperCase() + '</strong><br/>' + count + ' login(s)</div>'
+            : '<div style="background:rgba(0,0,0,0.88);color:#fff;padding:6px 10px;border:1px solid #444;font-family:monospace;font-size:11px;letter-spacing:0.5px"><strong>' + city.toUpperCase() + '</strong><br/>' + count + ' login(s)</div>'
+        });
+
+        // Pulsing ring — only for cities with activity, faster pulse = more activity
+        if (count > 0) {
+          rings.push({
+            lat: coords.lat,
+            lng: coords.lng,
+            color: hexToRgb(hex),
+            maxR: Math.min(3 + count * 0.6, 9),
+            period: Math.max(2400 - count * 200, 800)
+          });
+        }
+
+        // Floating text label
+        labels.push({
+          lat: coords.lat,
+          lng: coords.lng,
+          text: city + (count > 0 ? ' · ' + count : ''),
+          size: count > 0 ? 0.55 : 0.4,
+          color: globeLightMode
+            ? (count > 0 ? '#111111' : 'rgba(0,0,0,0.5)')
+            : (count > 0 ? '#ffffff' : 'rgba(255,255,255,0.5)')
+        });
+      });
+
+      // Arcs — connect every active city to the busiest one (hub-and-spoke).
+      // Skip if fewer than two cities are active (a single arc to itself is meaningless).
+      var active = [];
+      results.forEach(function(windows, i) {
+        var city = cities[i];
+        var count = 0;
+        windows.forEach(function(w) { count += (w.loginCount || w.count || 0); });
+        if (count > 0) active.push({ city: city, count: count, coords: GLOBE_CITIES[city] });
+      });
+
+      var arcs = [];
+      if (active.length >= 2) {
+        active.sort(function(a, b) { return b.count - a.count; });
+        var hub = active[0];
+        for (var i = 1; i < active.length; i++) {
+          var spoke = active[i];
+          var intensity = Math.min(0.35 + spoke.count * 0.08, 0.95);
+          // Per-side gradient: the arc starts in the hub's color and ends in the spoke's color.
+          // globe.gl reads .arcColor as [startColor, endColor] when given an array.
+          var hubColor = activityColor(hub.count);
+          var spokeColor = activityColor(spoke.count);
+          arcs.push({
+            startLat: hub.coords.lat,
+            startLng: hub.coords.lng,
+            endLat:   spoke.coords.lat,
+            endLng:   spoke.coords.lng,
+            color: [
+              hexToRgb(hubColor).replace('rgb', 'rgba').replace(')', ',' + intensity + ')'),
+              hexToRgb(spokeColor).replace('rgb', 'rgba').replace(')', ',' + intensity + ')')
+            ]
+          });
+        }
+      }
+
+      globe.pointsData(points);
+      globe.ringsData(rings);
+      globe.labelsData(labels);
+      globe.arcsData(arcs);
+      setText('globeTotal', String(grandTotal));
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Correlated alerts (KStream-KStream windowed join)
+  // ═══════════════════════════════════════════════════════════════════════════
+  function fetchCorrelatedAlerts() {
+    var tbody = document.getElementById('correlatedTableBody');
+    fetchJson('/api/correlated-alerts?limit=20').then(function(alerts) {
+      clearChildren(tbody);
+      if (!alerts.length) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', { colspan: '6', className: 'empty-state', textContent: 'no correlations yet — inject a scenario that combines market + social events in the same sector' })
+        ]));
+        return;
+      }
+      alerts.forEach(function(c) {
+        var marketChange = (c.marketChangePercent !== null && c.marketChangePercent !== undefined)
+          ? ' (' + Number(c.marketChangePercent).toFixed(2) + '%)' : '';
+        var socialPosts = (c.socialPostCount !== null && c.socialPostCount !== undefined)
+          ? ' (' + c.socialPostCount + ' posts)' : '';
+        var ts = c.correlationTimestamp ? Date.parse(c.correlationTimestamp) : null;
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', {}, [createEl('strong', { textContent: c.sector || '—' })]),
+          createEl('td', { textContent: (c.marketSymbol || '—') + marketChange }),
+          createEl('td', {}, [
+            createEl('span', { className: 'tag ' + riskClass(c.marketRiskLevel), textContent: c.marketRiskLevel || '—' })
+          ]),
+          createEl('td', { textContent: (c.socialTopic || '—') + socialPosts }),
+          createEl('td', {}, [
+            createEl('span', { className: 'tag ' + riskClass(c.socialRiskLevel), textContent: c.socialRiskLevel || '—' })
+          ]),
+          createEl('td', { style: { fontSize: '10px' }, textContent: ts ? fmtTime(ts) : '—' })
+        ]));
+      });
+    }).catch(function() {
+      clearChildren(tbody);
+      tbody.appendChild(createEl('tr', {}, [
+        createEl('td', { colspan: '6', className: 'empty-state', textContent: 'correlated-alerts endpoint not available' })
+      ]));
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Correlated alert summary (C7 — windowed aggregation with suppress)
+  // ═══════════════════════════════════════════════════════════════════════════
+  function fetchCorrelatedAlertsSummary() {
+    var tbody = document.getElementById('correlatedSummaryBody');
+    fetchJson('/api/correlated-alerts/summary').then(function(summaries) {
+      clearChildren(tbody);
+      if (!summaries.length) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', { colspan: '7', className: 'empty-state', textContent: 'no summaries yet — window must close (30s + 5s grace) before suppressed results appear' })
+        ]));
+        return;
+      }
+      summaries.forEach(function(s) {
+        var maxChange = (s.maxAbsMarketChange !== null && s.maxAbsMarketChange !== undefined)
+          ? Number(s.maxAbsMarketChange).toFixed(2) + '%' : '—';
+        var windowText = s.windowStart && s.windowEnd
+          ? fmtTime(s.windowStart) + ' — ' + fmtTime(s.windowEnd)
+          : '—';
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', {}, [createEl('strong', { textContent: s.sector || '—' })]),
+          createEl('td', { textContent: String(s.matchCount || 0) }),
+          createEl('td', { textContent: (s.marketSymbols || []).join(', ') || '—' }),
+          createEl('td', { textContent: (s.socialTopics || []).join(', ') || '—' }),
+          createEl('td', { textContent: maxChange }),
+          createEl('td', {}, [
+            createEl('span', { className: 'tag ' + riskClass(s.maxRiskLevel), textContent: s.maxRiskLevel || '—' })
+          ]),
+          createEl('td', { style: { fontSize: '10px' }, textContent: windowText })
+        ]));
+      });
+    }).catch(function() {
+      clearChildren(tbody);
+      tbody.appendChild(createEl('tr', {}, [
+        createEl('td', { colspan: '7', className: 'empty-state', textContent: 'correlated-alerts/summary endpoint not available' })
+      ]));
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Event feed
+  // ═══════════════════════════════════════════════════════════════════════════
+  function feedClass(type) {
+    if (type === 'payment') return 'success';
+    if (type === 'upgrade') return 'warn';
+    return 'neutral';
+  }
+
+  function addEvent(type, text) {
+    eventLog.unshift({ time: new Date(), type: type, text: text });
+    if (eventLog.length > 50) eventLog.pop();
+    renderFeed();
+  }
+
+  function renderFeed() {
+    var feed = document.getElementById('eventFeed');
+    clearChildren(feed);
+    if (!eventLog.length) {
+      feed.appendChild(createEl('div', { className: 'empty-state', textContent: 'events will appear here as data flows through the topology...' }));
+      return;
+    }
+    eventLog.forEach(function(e) {
+      feed.appendChild(createEl('div', { className: 'feed-item' }, [
+        createEl('span', { className: 'feed-text' }, [
+          createEl('span', { className: 'tag ' + feedClass(e.type), textContent: e.type }),
+          document.createTextNode(' ' + e.text)
+        ]),
+        createEl('span', { className: 'feed-time', textContent: e.time.toLocaleTimeString('en-GB', { hour12: false }) })
+      ]));
+    });
+  }
+
+  // init empty feed
+  renderFeed();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Polling
+  // ═══════════════════════════════════════════════════════════════════════════
+  function startPolling() {
+    if (timer) clearInterval(timer);
+    var interval = parseInt(document.getElementById('pollInterval').value, 10);
+    timer = setInterval(function() { if (!paused) fetchAll(); }, interval);
+  }
+
+  document.getElementById('pauseBtn').addEventListener('click', function() {
+    paused = !paused;
+    this.textContent = paused ? 'resume' : 'pause';
+  });
+
+  document.getElementById('refreshBtn').addEventListener('click', function() { fetchAll(); });
+  document.getElementById('pollInterval').addEventListener('change', startPolling);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Tabs
+  // ═══════════════════════════════════════════════════════════════════════════
+  var tabs = {
+    'tabDashboard':  'panelDashboard',
+    'tabUser':       'panelUser',
+    'tabDeveloper':  'panelDeveloper',
+  };
+
+  Object.keys(tabs).forEach(function(tabId) {
+    document.getElementById(tabId).addEventListener('click', function() {
+      Object.keys(tabs).forEach(function(tid) {
+        document.getElementById(tid).classList.remove('active');
+        document.getElementById(tabs[tid]).classList.remove('active');
+      });
+      document.getElementById(tabId).classList.add('active');
+      document.getElementById(tabs[tabId]).classList.add('active');
+      if (tabId === 'tabDeveloper') checkInjector();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Developer tab — scenario triggers
+  // ═══════════════════════════════════════════════════════════════════════════
+  var SCENARIO_DESCRIPTIONS = {
+    'iran-oil':     'Oil futures spike, social panic, energy sector correlation',
+    'ai-model':     'Grok-X hype, MSFT/GOOGL moves, AI regulation backlash',
+    'crypto-crash': 'Exchange hack, BTC/ETH plunge, viral social spike',
+    'mass-signup':  '22 signups across FREE/BASIC/PREMIUM/ENTERPRISE tiers',
+    'login-burst':  '50 logins across 6 cities to fill 30s login windows fast',
+    'mixed':        'Touches every pipeline: alerts, social, signups, logins',
+    'smoke-test':   'Minimal 2-event probe to verify the pipeline is alive',
+  };
+
+  var SCENARIO_DETAILS = {
+    'iran-oil': {
+      story: 'Iran oil strike rumours spread on social media, driving crude oil futures up and triggering knock-on moves in energy stocks and tech.',
+      events: [
+        { type: 'SocialTrendEvent', cls: 'social', detail: '5× "Iran oil strike" + 5× "oil prices" keyword matches' },
+        { type: 'MarketAlertEvent', cls: 'market', detail: 'CL=F +8.3% CRITICAL, XOM +4.1% MEDIUM, AMZN −2.1% LOW' },
+        { type: 'SignupRequestedEvent', cls: 'signup', detail: '2× PREMIUM signups' },
+      ],
+      pipelines: 'C5 metadata enrichment (CL=F, XOM, AMZN) → C6 KStream–KStream join correlates market+social in Energy sector → alert-stats windowed aggregation',
+    },
+    'ai-model': {
+      story: 'Grok-X release rumours drive MSFT up and GOOGL down on competitive pressure, followed by AI regulation backlash posts.',
+      events: [
+        { type: 'SocialTrendEvent', cls: 'social', detail: '8× "Grok-X release" + 5× "AI regulation" keyword matches' },
+        { type: 'MarketAlertEvent', cls: 'market', detail: 'MSFT +3.7% MEDIUM, GOOGL −2.4% LOW' },
+        { type: 'SignupRequestedEvent', cls: 'signup', detail: '1× BASIC + 1× PREMIUM + 1× ENTERPRISE' },
+      ],
+      pipelines: 'C6 correlation in Technology sector across two social topics → C5 metadata join for MSFT/GOOGL → signup-counts suppressed window',
+    },
+    'crypto-crash': {
+      story: 'A crypto exchange hack triggers panic: BTC and ETH plunge, a single viral post hits 250 shares, and a second wave of chatter follows.',
+      events: [
+        { type: 'SocialTrendEvent', cls: 'social', detail: '3× initial panic + 1× viral burst (250 posts, CRITICAL) + 5× second wave' },
+        { type: 'MarketAlertEvent', cls: 'market', detail: 'BTC-USD −12.4% CRITICAL, ETH-USD −9.8% CRITICAL' },
+        { type: 'SignupRequestedEvent', cls: 'signup', detail: '1× FREE + 1× BASIC + 1× PREMIUM' },
+      ],
+      pipelines: 'Both market and social hit CRITICAL risk → C6 windowed join in Crypto sector → demonstrates worst-case correlation',
+    },
+    'mass-signup': {
+      story: 'A wave of 22 signups across all tiers simulates a marketing campaign conversion funnel.',
+      events: [
+        { type: 'SignupRequestedEvent', cls: 'signup', detail: '8× FREE + 6× BASIC + 6× PREMIUM + 2× ENTERPRISE' },
+      ],
+      pipelines: 'signup-counts 1-min tumbling window WITH suppress → one final count per tier emitted only when the window closes (+ 30s grace period)',
+    },
+    'login-burst': {
+      story: '50 logins from 20 users across 6 cities and 3 device types, with a deterministic seed for reproducible runs.',
+      events: [
+        { type: 'LoginEvent', cls: 'login', detail: '50× logins — Zurich, Geneva, New York, London, Tokyo, Singapore × web/mobile/api' },
+      ],
+      pipelines: 'login-stats 30s tumbling window WITHOUT suppress → intermediate counts stream to the globe and stats table in real-time',
+    },
+    'mixed': {
+      story: 'A condensed sampler that lights up every downstream pipeline in a single run.',
+      events: [
+        { type: 'SocialTrendEvent', cls: 'social', detail: '3× "Iran oil strike" + 3× "Grok-X release"' },
+        { type: 'MarketAlertEvent', cls: 'market', detail: 'CL=F +6.2% HIGH, MSFT +3.5% MEDIUM, BTC-USD −8.7% CRITICAL' },
+        { type: 'SignupRequestedEvent', cls: 'signup', detail: '1× each: FREE, BASIC, PREMIUM, ENTERPRISE' },
+        { type: 'LoginEvent', cls: 'login', detail: '6× logins — one per city' },
+      ],
+      pipelines: 'Exercises all pipelines: C5 metadata join, C6 correlation (Energy + Technology + Crypto), alert-stats, signup-counts (suppress), login-stats (no suppress)',
+    },
+    'smoke-test': {
+      story: 'Minimal 2-event probe to verify the pipeline is alive before a demo. Not a real scenario.',
+      events: [
+        { type: 'MarketAlertEvent', cls: 'market', detail: 'AAPL −2.5% LOW' },
+        { type: 'SocialTrendEvent', cls: 'social', detail: '"Grok-X release" with 42 posts' },
+      ],
+      pipelines: 'Verifies end-to-end: Kafka → App A stateless enrichment → App B windowed aggregation → interactive query API',
+    },
+  };
+
+  var devLogEntries = [];
+
+  function injectorBase() {
+    return document.getElementById('injectorBase').value.replace(/\/+$/, '');
+  }
+
+  function devLog(msg, cls) {
+    devLogEntries.unshift({ time: new Date(), msg: msg, cls: cls || 'info' });
+    if (devLogEntries.length > 30) devLogEntries.pop();
+    var logEl = document.getElementById('devLog');
+    clearChildren(logEl);
+    devLogEntries.forEach(function(e) {
+      logEl.appendChild(createEl('div', { className: 'dev-log-item ' + e.cls }, [
+        document.createTextNode(e.msg),
+        createEl('span', { style: { color: 'var(--muted)' }, textContent: e.time.toLocaleTimeString('en-GB', { hour12: false }) })
+      ]));
+    });
+  }
+
+  function checkInjector() {
+    fetch(injectorBase() + '/health').then(function(res) {
+      return res.json();
+    }).then(function(data) {
+      document.getElementById('injectorDot').className = 'status-dot online';
+      var statusText = 'connected';
+      if (data.active) statusText = 'running: ' + data.active;
+      document.getElementById('injectorStatus').textContent = statusText;
+      loadScenarios();
+    }).catch(function() {
+      document.getElementById('injectorDot').className = 'status-dot offline';
+      document.getElementById('injectorStatus').textContent = 'not reachable — start with: docker compose --profile demo up -d demo-server';
+      showFallbackScenarios();
+    });
+  }
+
+  function loadScenarios() {
+    fetch(injectorBase() + '/scenarios').then(function(res) {
+      return res.json();
+    }).then(function(scenarios) {
+      renderScenarioCards(scenarios);
+    }).catch(function() {
+      showFallbackScenarios();
+    });
+  }
+
+  function showFallbackScenarios() {
+    var fallback = Object.keys(SCENARIO_DESCRIPTIONS).map(function(name) {
+      return { name: name, label: name, steps: '?' };
+    });
+    renderScenarioCards(fallback);
+  }
+
+  function buildTooltip(info) {
+    var sections = [];
+
+    sections.push(createEl('div', { className: 'tip-section' }, [
+      createEl('div', { className: 'tip-label', textContent: 'Story' }),
+      createEl('div', { textContent: info.story }),
+    ]));
+
+    var eventEls = [];
+    info.events.forEach(function(ev) {
+      eventEls.push(createEl('div', { style: { marginBottom: '3px' } }, [
+        createEl('span', { className: 'tip-tag ' + ev.cls, textContent: ev.type }),
+        document.createTextNode(' ' + ev.detail),
+      ]));
+    });
+    sections.push(createEl('div', { className: 'tip-section' }, [
+      createEl('div', { className: 'tip-label', textContent: 'Events published' }),
+    ].concat(eventEls)));
+
+    sections.push(createEl('div', { className: 'tip-section' }, [
+      createEl('div', { className: 'tip-label', textContent: 'Pipeline path' }),
+      createEl('div', { textContent: info.pipelines }),
+    ]));
+
+    return createEl('div', { className: 'scenario-tooltip' }, sections);
+  }
+
+  function renderScenarioCards(scenarios) {
+    var grid = document.getElementById('scenarioGrid');
+    clearChildren(grid);
+    scenarios.forEach(function(s) {
+      var desc = SCENARIO_DESCRIPTIONS[s.name] || '';
+      var info = SCENARIO_DETAILS[s.name];
+
+      var card = createEl('div', { className: 'scenario-card' }, [
+        createEl('div', { className: 'scenario-name', textContent: s.label || s.name }),
+        createEl('div', { className: 'scenario-desc', textContent: desc }),
+        createEl('div', { className: 'scenario-meta', textContent: s.steps + ' steps' }),
+        createEl('div', { className: 'scenario-status', textContent: '' })
+      ]);
+
+      if (info) {
+        var tooltip = buildTooltip(info);
+        var infoBtn = createEl('div', { className: 'scenario-info-btn', textContent: 'i' });
+        infoBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          document.querySelectorAll('.scenario-tooltip.visible').forEach(function(t) {
+            if (t !== tooltip) t.classList.remove('visible');
+          });
+          tooltip.classList.toggle('visible');
+        });
+        card.appendChild(tooltip);
+        card.appendChild(infoBtn);
+      }
+
+      card.addEventListener('click', function() { triggerScenario(s.name, card); });
+      grid.appendChild(card);
+    });
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.scenario-info-btn') && !e.target.closest('.scenario-tooltip')) {
+        document.querySelectorAll('.scenario-tooltip.visible').forEach(function(t) {
+          t.classList.remove('visible');
+        });
+      }
+    });
+  }
+
+  function triggerScenario(name, card) {
+    var burstSize = parseInt(document.getElementById('burstSize').value, 10) || 1;
+    var statusEl = card.querySelector('.scenario-status');
+
+    devLog('triggering ' + name + ' (burst=' + burstSize + ')...', 'info');
+    statusEl.textContent = 'starting...';
+    statusEl.style.color = 'var(--warn)';
+    card.classList.add('running');
+
+    fetch(injectorBase() + '/scenarios/' + name, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ burstSize: burstSize })
+    }).then(function(res) {
+      return res.json().then(function(data) { return { status: res.status, data: data }; });
+    }).then(function(result) {
+      if (result.status === 202) {
+        devLog(name + ' started successfully', 'ok');
+        statusEl.textContent = 'running';
+        statusEl.style.color = 'var(--success)';
+        pollScenarioStatus(name, card, statusEl);
+      } else if (result.status === 409) {
+        devLog('blocked — ' + (result.data.active || 'another scenario') + ' is already running', 'err');
+        statusEl.textContent = 'blocked';
+        statusEl.style.color = 'var(--danger)';
+        card.classList.remove('running');
+      } else {
+        devLog(name + ' error: ' + (result.data.error || 'unknown'), 'err');
+        statusEl.textContent = 'error';
+        statusEl.style.color = 'var(--danger)';
+        card.classList.remove('running');
+      }
+    }).catch(function(e) {
+      devLog(name + ' failed: ' + e.message, 'err');
+      statusEl.textContent = 'failed';
+      statusEl.style.color = 'var(--danger)';
+      card.classList.remove('running');
+    });
+  }
+
+  function pollScenarioStatus(name, card, statusEl) {
+    var pollTimer = setInterval(function() {
+      fetch(injectorBase() + '/health').then(function(res) {
+        return res.json();
+      }).then(function(data) {
+        if (!data.active) {
+          clearInterval(pollTimer);
+          devLog(name + ' completed', 'ok');
+          statusEl.textContent = 'done';
+          statusEl.style.color = 'var(--success)';
+          card.classList.remove('running');
+          setTimeout(function() { statusEl.textContent = ''; }, 3000);
+        }
+      }).catch(function() {
+        clearInterval(pollTimer);
+        card.classList.remove('running');
+      });
+    }, 1000);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User View — Signup
+  // ═══════════════════════════════════════════════════════════════════════════
+  var signupBase = 'http://localhost:8091';
+
+  document.getElementById('userSignupBtn').addEventListener('click', function() {
+    var name = document.getElementById('userSignupName').value.trim();
+    var email = document.getElementById('userSignupEmail').value.trim();
+    var tier = document.getElementById('userSignupTier').value;
+    var resultEl = document.getElementById('userSignupResult');
+
+    if (!name || !email) {
+      resultEl.textContent = 'please fill in name and email';
+      resultEl.style.color = 'var(--danger)';
+      return;
+    }
+
+    resultEl.textContent = 'submitting...';
+    resultEl.style.color = 'var(--muted)';
+
+    fetch(signupBase + '/api/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, email: email, tier: tier })
+    }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      resultEl.style.color = 'var(--success)';
+      resultEl.textContent = 'signed up — traceId: ' + (data.traceId || 'ok');
+      document.getElementById('userSignupName').value = '';
+      document.getElementById('userSignupEmail').value = '';
+    }).catch(function() {
+      clearChildren(resultEl);
+      resultEl.style.color = 'var(--muted)';
+      resultEl.appendChild(createEl('div', { style: { fontSize: '11px', marginBottom: '4px' } }, [
+        document.createTextNode('Browser blocked by CORS — use terminal instead:')
+      ]));
+      var cmd = "curl -X POST http://localhost:8091/api/signup -H 'Content-Type: application/json' -d '{\"name\":\"" + name + "\",\"email\":\"" + email + "\",\"tier\":\"" + tier + "\"}'";
+      resultEl.appendChild(createEl('div', {
+        style: { fontSize: '10px', background: 'var(--tag-bg)', padding: '8px', fontFamily: 'JetBrains Mono, monospace', wordBreak: 'break-all', cursor: 'pointer', border: '1px solid var(--border)' },
+        textContent: cmd,
+        title: 'Click to copy'
+      }));
+      resultEl.lastChild.addEventListener('click', function() {
+        navigator.clipboard.writeText(cmd);
+        resultEl.firstChild.textContent = 'copied to clipboard — paste in terminal';
+        resultEl.firstChild.style.color = 'var(--success)';
+      });
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User View — Account Lookup
+  // ═══════════════════════════════════════════════════════════════════════════
+  document.getElementById('userLookupBtn').addEventListener('click', function() {
+    var userId = document.getElementById('userLookupId').value.trim();
+    var resultEl = document.getElementById('userLookupResult');
+    clearChildren(resultEl);
+
+    if (!userId) {
+      resultEl.appendChild(createEl('div', { style: { color: 'var(--muted)', fontSize: '12px' }, textContent: 'enter a userId to look up' }));
+      return;
+    }
+
+    fetchJson('/api/users/' + encodeURIComponent(userId)).then(function(user) {
+      var payClass = user.lastPaymentStatus === 'SUCCESS' ? 'success' :
+                     user.lastPaymentStatus === 'FAILED' ? 'danger' : 'neutral';
+      resultEl.appendChild(createEl('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' } }, [
+        createEl('div', { style: { display: 'flex', justifyContent: 'space-between' } }, [
+          createEl('strong', { textContent: user.name || userId }),
+          createEl('span', { className: 'tag ' + tierClass(user.currentTier), textContent: user.currentTier || '—' })
+        ]),
+        createEl('div', { style: { color: 'var(--muted)', fontSize: '11px' }, textContent: user.email || '' }),
+        createEl('div', { style: { borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '4px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } }, [
+          createEl('div', {}, [
+            createEl('div', { style: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }, textContent: 'lifecycle events' }),
+            createEl('div', { style: { fontSize: '24px', fontWeight: '700' }, textContent: String(user.lifecycleEventCount || 0) }),
+            createEl('div', { style: { fontSize: '10px', color: 'var(--muted)' }, textContent: 'last: ' + (user.lastLifecycleEvent || '—') })
+          ]),
+          createEl('div', {}, [
+            createEl('div', { style: { fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }, textContent: 'payments' }),
+            createEl('div', { style: { fontSize: '24px', fontWeight: '700' }, textContent: (user.successfulPayments || 0) + '/' + (user.totalPayments || 0) }),
+            createEl('div', {}, [createEl('span', { className: 'tag ' + payClass, textContent: user.lastPaymentStatus || '—' })])
+          ])
+        ])
+      ]));
+    }).catch(function(e) {
+      resultEl.appendChild(createEl('div', { style: { color: 'var(--muted)', fontSize: '12px' }, textContent: 'user not found — events may not have been processed yet' }));
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User View — Watchlist
+  // ═══════════════════════════════════════════════════════════════════════════
+  var watchlist = ['CL=F', 'AAPL', 'BTC-USD'];
+
+  function renderWatchlistChips() {
+    var container = document.getElementById('watchlistSymbols');
+    clearChildren(container);
+    watchlist.forEach(function(sym) {
+      var chip = createEl('span', { className: 'tag', style: { cursor: 'pointer', padding: '4px 10px' } }, [
+        document.createTextNode(sym + ' '),
+        createEl('span', { style: { color: 'var(--danger)', fontWeight: '700' }, textContent: '×' })
+      ]);
+      chip.addEventListener('click', function() {
+        watchlist = watchlist.filter(function(s) { return s !== sym; });
+        renderWatchlistChips();
+        fetchWatchlist();
+      });
+      container.appendChild(chip);
+    });
+  }
+
+  document.getElementById('watchlistAddBtn').addEventListener('click', function() {
+    var input = document.getElementById('watchlistInput');
+    var sym = input.value.trim();
+    if (sym && watchlist.indexOf(sym) === -1) {
+      watchlist.push(sym);
+      input.value = '';
+      renderWatchlistChips();
+      fetchWatchlist();
+    }
+  });
+
+  document.getElementById('watchlistInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') document.getElementById('watchlistAddBtn').click();
+  });
+
+  function fetchWatchlist() {
+    var tbody = document.getElementById('watchlistTableBody');
+    if (watchlist.length === 0) {
+      clearChildren(tbody);
+      tbody.appendChild(createEl('tr', {}, [
+        createEl('td', { colspan: '5', className: 'empty-state', textContent: 'add symbols to your watchlist to see live alert stats' })
+      ]));
+      return;
+    }
+
+    var promises = watchlist.map(function(sym) {
+      return fetchJson('/api/alerts/stats/' + encodeURIComponent(sym)).catch(function() { return []; });
+    });
+
+    Promise.all(promises).then(function(results) {
+      var allRows = [];
+      results.forEach(function(data) {
+        data.forEach(function(w) { allRows.push(w); });
+      });
+
+      clearChildren(tbody);
+      if (allRows.length === 0) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', { colspan: '5', className: 'empty-state', textContent: 'no recent alerts for your watchlist — inject some events' })
+        ]));
+        return;
+      }
+
+      allRows.sort(function(a, b) { return b.windowStart - a.windowStart; });
+      allRows.slice(0, 15).forEach(function(w) {
+        tbody.appendChild(createEl('tr', {}, [
+          createEl('td', {}, [createEl('strong', { textContent: w.symbolOrTopic || '' })]),
+          createEl('td', { style: { fontSize: '10px' }, textContent: fmtTime(w.windowStart) }),
+          createEl('td', { textContent: String(w.alertCount) }),
+          createEl('td', { textContent: ((w.avgChangePercent || 0).toFixed(2)) + '%' }),
+          createEl('td', {}, [
+            createEl('span', { className: 'tag ' + riskClass(w.lastRiskLevel), textContent: w.lastRiskLevel || '—' })
+          ])
+        ]));
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User View — Signup Stats Chart
+  // ═══════════════════════════════════════════════════════════════════════════
+  function fetchUserSignupStats() {
+    var chart = document.getElementById('userSignupChart');
+    var tiers = ['FREE', 'BASIC', 'PREMIUM', 'ENTERPRISE'];
+    var promises = tiers.map(function(t) {
+      return fetchJson('/api/signups/stats/' + t).then(function(data) {
+        var total = 0;
+        data.forEach(function(w) { total += (w.signupCount || w.count || 0); });
+        return { tier: t, count: total };
+      }).catch(function() { return { tier: t, count: 0 }; });
+    });
+
+    Promise.all(promises).then(function(results) {
+      clearChildren(chart);
+      var max = Math.max.apply(null, results.map(function(r) { return r.count; }).concat([1]));
+      results.forEach(function(r) {
+        var fillDiv = createEl('div', { className: 'bar-fill' });
+        fillDiv.style.width = ((r.count / max) * 100) + '%';
+        chart.appendChild(createEl('div', { className: 'bar-row' }, [
+          createEl('div', { className: 'bar-label', textContent: r.tier }),
+          createEl('div', { className: 'bar-track' }, [fillDiv]),
+          createEl('div', { className: 'bar-value', textContent: String(r.count) })
+        ]));
+      });
+    });
+  }
+
+  renderWatchlistChips();
+
+  // refresh user view data on poll cycle
+  var originalFetchAll = fetchAll;
+  fetchAll = function() {
+    originalFetchAll();
+    if (document.getElementById('panelUser').classList.contains('active')) {
+      fetchWatchlist();
+      fetchUserSignupStats();
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Boot
+  // ═══════════════════════════════════════════════════════════════════════════
+  initGlobe();
+  fetchAll();
+  startPolling();
+})();
+</script>
+
+</body>
+</html>

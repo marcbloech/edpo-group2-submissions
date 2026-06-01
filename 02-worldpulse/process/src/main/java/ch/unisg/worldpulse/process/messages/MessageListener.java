@@ -1,6 +1,5 @@
 package ch.unisg.worldpulse.process.messages;
 
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -27,22 +26,26 @@ public class MessageListener {
     private static final String SIGNUP_PROCESS_ID = "signup-process";
     private static final String UPGRADE_PROCESS_ID = "upgrade-process";
     private static final String DEACTIVATION_PROCESS_ID = "deactivation-process";
-    private static final int MAX_PROCESS_START_ATTEMPTS = 3;
-    private static final Duration RETRY_DELAY = Duration.ofMillis(500);
 
     private final ObjectMapper objectMapper;
     private final ZeebeClient zeebeClient;
-    private final ProcessDeadLetterPublisher deadLetterPublisher;
 
     public MessageListener(
             ObjectMapper objectMapper,
-            ZeebeClient zeebeClient,
-            ProcessDeadLetterPublisher deadLetterPublisher) {
+            ZeebeClient zeebeClient) {
         this.objectMapper = objectMapper;
         this.zeebeClient = zeebeClient;
-        this.deadLetterPublisher = deadLetterPublisher;
     }
 
+    /**
+     * Bridges Kafka events to Zeebe process instances.
+     *
+     * <p>Retries and dead-letter routing are handled by the framework-level
+     * {@code DefaultErrorHandler} configured in
+     * {@code KafkaErrorHandlerConfig}, not by sleeping inside the listener.
+     * Throwing here is the signal to retry with back-off; once retries are
+     * exhausted the handler invokes the DLQ recoverer.</p>
+     */
     @KafkaListener(id = "worldpulse-process", topics = TOPIC_NAME)
     public void handleEvent(String messageJson, @Header("type") String messageType) throws Exception {
         if (!isSupportedIngressEvent(messageType)) {
@@ -62,30 +65,12 @@ public class MessageListener {
 
         LOG.info("Received {}, starting {} for '{}' (traceid={})", messageType, processId, name, traceid);
 
-        Exception lastException = null;
-        for (int attempt = 1; attempt <= MAX_PROCESS_START_ATTEMPTS; attempt++) {
-            try {
-                zeebeClient.newCreateInstanceCommand()
-                        .bpmnProcessId(processId)
-                        .latestVersion()
-                        .variables(variables)
-                        .send()
-                        .join();
-                return;
-            } catch (Exception ex) {
-                lastException = ex;
-                LOG.warn(
-                        "Process start attempt {}/{} failed (traceid={}): {}",
-                        attempt,
-                        MAX_PROCESS_START_ATTEMPTS,
-                        traceid,
-                        ex.getMessage());
-                Thread.sleep(RETRY_DELAY.toMillis());
-            }
-        }
-
-        LOG.error("Process start failed after {} attempts (event={}, traceid={})", MAX_PROCESS_START_ATTEMPTS, messageType, traceid, lastException);
-        deadLetterPublisher.publishProcessStartFailure(messageJson, messageType, traceid, lastException == null ? "unknown" : lastException.getMessage());
+        zeebeClient.newCreateInstanceCommand()
+                .bpmnProcessId(processId)
+                .latestVersion()
+                .variables(variables)
+                .send()
+                .join();
     }
 
     private boolean isSupportedIngressEvent(String messageType) {

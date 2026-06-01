@@ -13,19 +13,21 @@ services:
 
   # Dedicated KRaft controller — manages cluster metadata only, no data.
   controller:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.5.3
     hostname: controller
     networks:
       - worldpulse
     environment:
       KAFKA_NODE_ID: 1
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_PROCESS_ROLES: controller
       KAFKA_LISTENERS: CONTROLLER://:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller:9093
 
   kafka1:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.5.3
     hostname: kafka1
     networks:
       - worldpulse
@@ -33,6 +35,7 @@ services:
       - "9092:9092"                           # host access for debugging (localhost:9092)
     environment:
       KAFKA_NODE_ID: 2
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_PROCESS_ROLES: broker
       KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1:29092,EXTERNAL://localhost:9092
@@ -46,7 +49,7 @@ services:
       - controller
 
   kafka2:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.5.3
     hostname: kafka2
     networks:
       - worldpulse
@@ -54,6 +57,7 @@ services:
       - "9094:9094"                           # host access for debugging (localhost:9094)
     environment:
       KAFKA_NODE_ID: 3
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_PROCESS_ROLES: broker
       KAFKA_LISTENERS: INTERNAL://:29094,EXTERNAL://:9094
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2:29094,EXTERNAL://localhost:9094
@@ -67,7 +71,7 @@ services:
       - controller
 
   kafka3:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.5.3
     hostname: kafka3
     networks:
       - worldpulse
@@ -75,6 +79,7 @@ services:
       - "9096:9096"                           # host access for debugging (localhost:9096)
     environment:
       KAFKA_NODE_ID: 4
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
       KAFKA_PROCESS_ROLES: broker
       KAFKA_LISTENERS: INTERNAL://:29096,EXTERNAL://:9096
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka3:29096,EXTERNAL://localhost:9096
@@ -245,27 +250,41 @@ services:
       - ZEEBE_CLIENT_SECURITY_PLAINTEXT=true
       - CAMUNDA_CONNECTOR_POLLING_ENABLED=false
       - CAMUNDA_CONNECTOR_WEBHOOK_ENABLED=false
-      - SLACK_OAUTH_TOKEN=xoxb-10925461763601-10897122903191-nBUN2fLAOB4FgmUK9THStwOb
-      - SLACK_CHANNEL=C0ATNQPD188
+      # Supplied via .env (see .env.example); empty by default so no secret ships.
+      - SLACK_OAUTH_TOKEN=${SLACK_OAUTH_TOKEN:-}
+      - SLACK_CHANNEL=${SLACK_CHANNEL:-}
     depends_on:
       - zeebe
 
   # --- Market Scanner (Python — financial market monitoring) ---
   # Publishes MarketAlertEvent to Kafka when significant price movements are detected.
-  # V1: fires a mock alert within 2-10 seconds of startup.
+  # Modes: MOCKED (default, no API key needed) or REAL (Finnhub WebSocket).
   market-scanner:
     build: ./market-scanner
     container_name: market-scanner
     networks:
       - worldpulse
+    ports:
+      - "8081:8081"
     depends_on:
       - kafka1
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - MARKET_MODE=${MARKET_MODE:-MOCKED}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - WATCHLIST=AAPL,MSFT,GOOGL,AMZN,TSLA
+      - WINDOW_SIZE=300
+      - DROP_THRESHOLD=3.0
+      - SPIKE_THRESHOLD=5.0
+      - VOLATILITY_THRESHOLD=8.0
+      - EVAL_INTERVAL=30
+      - COOLDOWN_SECONDS=300
+      - MOCK_EVENT_INTERVAL_SECONDS=5
+      - HEALTH_PORT=8081
 
   # --- BlueSky Scanner (Python — social media monitoring) ---
-  # Publishes SocialTrendEvent to Kafka when trending topics or sentiment spikes are detected.
-  # V1: fires a mock alert within 2-10 seconds of startup.
+  # Publishes SocialTrendEvent to Kafka when keyword trends are detected on Bluesky.
+  # Uses Jetstream stream + Search API backfill.
   bluesky-scanner:
     build: ./bluesky-scanner
     container_name: bluesky-scanner
@@ -275,6 +294,21 @@ services:
       - kafka1
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - BLUESKY_MODE=REAL
+      - SCAN_STRATEGY=REALTIME
+      - SEARCH_ENABLED=false
+      - MOCK_EVENT_INTERVAL_SECONDS=1
+      - KEYWORDS=AI regulation,climate summit,crypto crash,tech layoffs,swiss tech
+      - MIN_KEYWORD_LENGTH=4
+      - BLOCKED_SINGLE_KEYWORDS=the,and,is,ai
+      - TRENDING_THRESHOLD=50
+      - WINDOW_SIZE=300
+      - EVAL_INTERVAL=30
+      - COOLDOWN_SECONDS=900
+      - SEARCH_INTERVAL=120
+      - SEARCH_LIMIT=25
+      - ENGLISH_ONLY=false
+      - DEMO_MODE=false
 
   # --- Process service (Kafka → Zeebe bridge) ---
   # Listens for SignupRequestedEvent on Kafka, starts BPMN process instances in Zeebe
@@ -301,6 +335,81 @@ services:
       - CAMUNDA_CLIENT_ID=${CAMUNDA_CLIENT_ID:-}
       - CAMUNDA_CLIENT_SECRET=${CAMUNDA_CLIENT_SECRET:-}
       - CAMUNDA_OAUTH_URL=${CAMUNDA_OAUTH_URL:-}
+
+  # --- Login Generator (Python — produces LoginEvents for stream-processing) ---
+  # Feeds the C4 login-stats windowed aggregation in the stream-processing pipeline.
+  # Only starts with: docker compose --profile demo up login-generator
+  login-generator:
+    build: ./login-generator
+    container_name: login-generator
+    profiles:
+      - demo
+    networks:
+      - worldpulse
+    depends_on:
+      - kafka1
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - LOGIN_COUNT=50
+      - LOGIN_INTERVAL_MS=200
+      - LOGIN_CONTINUOUS=true
+
+  # --- Demo Injector (Python — replays scripted scenarios into 'worldpulse') ---
+  # Lights up the whole stream-processing pipeline during demos by playing back
+  # pre-built event sequences (iran-oil, ai-model, crypto-crash, mass-signup, etc.).
+  # Run a scenario on demand, e.g.:
+  #   docker compose --profile demo run --rm demo-injector \
+  #     python demo_injector.py iran-oil --burst-size 5
+  demo-injector:
+    build: ./demo-injector
+    container_name: demo-injector
+    profiles:
+      - demo
+    networks:
+      - worldpulse
+    depends_on:
+      - kafka1
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+
+  # --- Demo Server (HTTP API for triggering demo scenarios from the dashboard) ---
+  # Persistent service that exposes POST /scenarios/{name} so the dashboard's
+  # Developer tab can fire scenarios without a terminal.
+  # Starts with: docker compose --profile demo up -d demo-server
+  demo-server:
+    build: ./demo-injector
+    container_name: demo-server
+    command: ["python", "-u", "demo_server.py"]
+    profiles:
+      - demo
+    networks:
+      - worldpulse
+    ports:
+      - "8112:8112"
+    depends_on:
+      - kafka1
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - QUERY_SERVICE_URL=http://stream-processing:8097
+      - DEMO_SERVER_PORT=8112
+
+  # --- Stream Processing (Kafka Streams — enrichment + analytics) ---
+  # Reads raw events from Kafka topics, enriches them, and builds analytics views.
+  stream-processing:
+    build:
+      context: ./stream-processing
+      dockerfile: Dockerfile
+    networks:
+      - worldpulse
+    ports:
+      - "8097:8097"
+    depends_on:
+      - kafka1
+      - kafka2
+      - kafka3
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29094,kafka3:29096
+      - APPLICATION_SERVER=stream-processing:8097
 
 # All containers share this network so they can reach each other by hostname
 networks:

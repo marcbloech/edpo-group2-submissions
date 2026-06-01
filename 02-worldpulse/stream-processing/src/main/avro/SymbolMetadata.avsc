@@ -1,0 +1,12 @@
+{
+  "type": "record",
+  "name": "SymbolMetadata",
+  "namespace": "ch.unisg.worldpulse.streams.avro",
+  "doc": "Reference data for financial symbols. SCHEMA EVOLUTION NOTE: The 'category' field was changed from an inline enum to a shared AssetCategory enum reference. This is a breaking change for registryless Avro deserialization. If the symbol-metadata topic contains existing data, either: (1) reset/reseed the topic (recommended, since it's compacted reference data), or (2) add schema-evolution support (writer schema or Schema Registry) before deploying this change.",
+  "fields": [
+    {"name": "symbol", "type": "string"},
+    {"name": "displayName", "type": "string"},
+    {"name": "sector", "type": "string"},
+    {"name": "category", "type": "ch.unisg.worldpulse.streams.avro.AssetCategory"}
+  ]
+}

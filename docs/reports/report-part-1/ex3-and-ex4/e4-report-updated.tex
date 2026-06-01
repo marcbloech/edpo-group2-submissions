@@ -1,0 +1,271 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[english]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{float}
+
+\title{Exercise 4: Orchestration vs Choreography \& Camunda 8\\[0.5em]
+\large Event-driven and Process-oriented Architectures $\cdot$ FS2026 $\cdot$ Group 2\\
+University of St.\,Gallen $\cdot$ School of Computer Science}
+
+\author{Marc Bl\"ochlinger \and Arman Gezerer \and Andrei Faur}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent GitHub: \url{https://github.com/marcbloech/edpo-group2}
+
+\begin{table}[h]
+    \centering
+    \caption{Group Contributions}
+    \begin{tabular}{
+        >{\raggedright\arraybackslash}p{0.15\textwidth}
+        >{\raggedright\arraybackslash}p{0.75\textwidth}
+    }
+    \toprule
+    \textbf{Member} & \textbf{Contribution Area} \\
+    \midrule
+    Marc   & Orchestration vs choreography analysis, ADRs 0001/0003/0004, Kafka--Zeebe bridge design \\
+    Arman  & Resilience fallbacks (ADR 0006), dead-letter queue, process service implementation \\
+    Andrei & ADR 0002 (worker placement), sequence diagrams, E4 README, bounded context analysis \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+
+\section{Introduction}
+
+This report discusses the balance between orchestration and choreography in the WorldPulse architecture, justifies our choice of Camunda~8 (Zeebe) over Camunda~7 / Operaton, and connects these decisions explicitly to our specific use case. The report is written in the context of Lecture~4 topics: process monoliths and bounded contexts, commands vs events, and the Camunda~7 vs~8 comparison.
+
+
+\section{Conceptual Architecture}
+
+Figure~\ref{fig:architecture} shows the WorldPulse architecture at a conceptual level, distinguishing orchestrated interactions from choreographed ones.
+
+%% TODO: Insert conceptual architecture diagram
+%\begin{figure}[h]
+%    \centering
+%    \includegraphics[width=\textwidth]{conceptual-architecture.png}
+%    \caption{WorldPulse conceptual architecture. Solid arrows = orchestrated interactions via Zeebe (commands). Dashed arrows = choreographed interactions via Kafka (events).}
+%    \label{fig:architecture}
+%\end{figure}
+
+\textbf{Orchestration (Zeebe, solid arrows):} The process service owns four BPMN models and coordinates user lifecycle flows by activating jobs for workers in the domain services. These are \emph{business commands} --- directed requests such as ``validate this signup,'' ``process this payment,'' ``activate this account'' --- that workers must handle.
+
+\textbf{Choreography (Kafka, dashed arrows):} After completing their Zeebe jobs, workers publish \emph{business events} to the shared \texttt{worldpulse} Kafka topic --- broadcast notifications such as ``a payment was received,'' ``an account was activated.'' Any service can subscribe; missing an event does not break the core flow.
+
+
+\section{Bounded Contexts and Avoiding the Process Monolith}
+
+A process model should have a single owner within one bounded context. One process spanning multiple services creates a process monolith.
+
+\textbf{Two separate BPMN processes (ADR~0003):} Rather than one monolithic process covering everything from signup to account activation, we split into \texttt{signup-process} (owned by the signup context) and \texttt{payment-process} (owned by the payment context), linked via a call activity. In the revised design, \texttt{activate-account} runs in \texttt{signup-process} after the call activity returns --- previously it was inside \texttt{payment-process}, which was a bounded context violation.
+
+\textbf{Workers stay in their owning services (ADR~0002):} The payment service owns \texttt{process-payment} and \texttt{refund-payment}; the notification service owns \texttt{send-notification}; the signup service owns \texttt{validate-signup}, \texttt{activate-account}, \texttt{assess-payment-eligibility}, \texttt{apply-tier-upgrade}, and \texttt{deactivate-account}. The process service acts only as the deployment and ingress bridge --- it contains zero domain logic.
+
+\textbf{Central vs decentralised engine:} We chose a single shared Zeebe instance rather than one engine per service. Zeebe functions as infrastructure; the BPMN process ownership remains at the service level.
+
+
+\section{Balancing Orchestration and Choreography}
+
+\subsection{Our hybrid approach}
+
+WorldPulse uses a deliberate hybrid: Kafka choreography at the system boundary, Zeebe orchestration within the signup/payment flow. This is a principled design choice guided by the lecture's command vs event framework.
+
+\subsection{Business events and commands in WorldPulse}
+
+Following the feedback to focus on \emph{business-level} events and commands rather than engine-level concerns, we distinguish two categories:
+
+\textbf{Business commands} are directed requests that must be handled. In WorldPulse, these are issued as Zeebe job activations:
+
+\begin{table}[H]
+    \centering
+    \caption{Business commands in WorldPulse}
+    \small
+    \begin{tabular}{
+        >{\raggedright\arraybackslash}p{0.28\textwidth}
+        >{\raggedright\arraybackslash}p{0.15\textwidth}
+        >{\raggedright\arraybackslash}p{0.47\textwidth}
+    }
+    \toprule
+    \textbf{Command} & \textbf{Transport} & \textbf{Why it is a command} \\
+    \midrule
+    \texttt{validate-signup} & Zeebe job & Signup cannot proceed without validation. Ignoring it would leave invalid data in the system. \\
+    \addlinespace
+    \texttt{process-payment} & Zeebe job & A paid user must not be activated without successful payment. The result directly determines the next step. \\
+    \addlinespace
+    \texttt{refund-payment} & Zeebe job & Compensation must happen --- the user was charged and activation failed. Ignoring it would leave money captured without an active account. \\
+    \addlinespace
+    \texttt{activate-account} & Zeebe job & The account must be activated for the signup to complete. Ignoring it would leave the user in limbo. \\
+    \addlinespace
+    \texttt{send-notification} & Zeebe job & The BPMN process requires a notification at this point. However, the worker is non-blocking: if dispatch fails, it returns a fallback result and the process continues. \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{A note on notifications:} Notification dispatch is modelled as a command (Zeebe job) because the BPMN process explicitly requests it at a specific point in the flow. However, the worker is designed to be non-blocking --- dispatch failures do not fail the Zeebe job. In that sense, the notification is closer to an event in spirit (it can be ``ignored'' without breaking the flow), but the orchestration ensures it is \emph{attempted} at the right moment. An alternative would be to publish a Kafka event and let the notification service react via choreography, which would decouple the notification entirely from the process flow. We chose the Zeebe approach for visibility: the BPMN diagram shows exactly when notifications are sent.
+
+\textbf{Business events} record domain-level facts and are published to the \texttt{worldpulse} Kafka topic after workers complete their jobs:
+
+\begin{table}[H]
+    \centering
+    \caption{Business events in WorldPulse (Kafka choreography)}
+    \small
+    \begin{tabular}{
+        >{\raggedright\arraybackslash}p{0.32\textwidth}
+        >{\raggedright\arraybackslash}p{0.58\textwidth}
+    }
+    \toprule
+    \textbf{Event} & \textbf{Why it is an event (can be ignored)} \\
+    \midrule
+    \texttt{SignupRequestedEvent} & Published by the signup service when a user submits the form. The process service consumes it to start orchestration, but the notification service also consumes it independently. Missing it in one consumer does not break the other. \\
+    \addlinespace
+    \texttt{PaymentReceivedEvent} & Published by \texttt{ProcessPaymentWorker} after a successful charge. Downstream consumers (analytics, audit) can subscribe. The core flow does not depend on any consumer reacting. \\
+    \addlinespace
+    \texttt{PaymentFailedEvent} & Same pattern. Records the fact that payment was declined. \\
+    \addlinespace
+    \texttt{PaymentRefundedEvent} & Published after compensation. An audit service could track refunds. \\
+    \addlinespace
+    \texttt{AccountActivatedEvent} & Published by \texttt{ActivateAccountWorker}. Downstream consumers can react (e.g., provision resources). \\
+    \addlinespace
+    \texttt{NotificationSentEvent} & Published by \texttt{SendNotificationWorker}. Useful for analytics (delivery rate tracking). \\
+    \addlinespace
+    \texttt{MarketAlertEvent}, \texttt{SocialTrendEvent} & Published by Python scanner services. Purely choreographic --- no BPMN process drives them. The notification service consumes them via a dedicated Kafka listener. \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Engine-level events} (timer boundary firing, error boundary catching \texttt{PAYMENT\_ERROR}, job activation/completion signals) are internal to Zeebe and invisible to other services. The distinction matters: missing a business event on Kafka has no effect on the core flow; an engine event like a timer firing directly affects the process instance.
+
+\subsection{Kafka integration in WorldPulse}
+
+Kafka plays three roles in WorldPulse, extending beyond a narrow ingress bridge:
+
+\begin{enumerate}
+    \item \textbf{Orchestration ingress}: The process service's \texttt{MessageListener} consumes lifecycle events (\texttt{SignupRequestedEvent}, \texttt{UpgradeRequestedEvent}, \texttt{AccountDeactivationRequestedEvent}) and starts the corresponding BPMN processes.
+    \item \textbf{Business event broadcasting}: Every worker publishes outcome events (\texttt{PaymentReceivedEvent}, \texttt{AccountActivatedEvent}, \texttt{NotificationSentEvent}, etc.) to the \texttt{worldpulse} topic after completing its Zeebe job. This enables downstream choreography without coupling consumers to the orchestration layer.
+    \item \textbf{Scanner event choreography}: The Python market-scanner and bluesky-scanner services publish \texttt{MarketAlertEvent} and \texttt{SocialTrendEvent} to Kafka. The notification service consumes these via a dedicated \texttt{ScannerEventListener} with its own consumer group, entirely outside the Zeebe orchestration scope.
+    \item \textbf{Dead-letter topic}: Failed process starts are published to \texttt{worldpulse-dead-letter} as \texttt{ProcessStartFailedEvent}, ensuring no signup event is silently dropped.
+\end{enumerate}
+
+This hybrid ensures that adding a new downstream consumer (e.g., analytics) requires only subscribing to the Kafka topic --- no changes to the orchestration layer or any existing service.
+
+\subsection{Reasons for orchestration in the signup-to-payment flow}
+
+Could we model the signup-to-payment link via Kafka choreography instead? The heuristic is: ``Is it OK if this message is ignored?'' For payment processing, the answer is no --- a paid user must not be activated without successful payment. This makes it semantically a command relationship.
+
+We could implement this command over Kafka (as Flowing Retail does with \texttt{RetrievePaymentCommand}), but Zeebe provides built-in timeout handling (5-minute timer boundary), error propagation (BPMN error events), and stateful retry (user task with \texttt{retryCount}) that we would otherwise need to implement manually.
+
+\subsection{Where choreography remains the right choice}
+
+The notification service remains a pure reactor. Its Zeebe worker (\texttt{send-notification}) receives a \texttt{notificationType} variable and dispatches accordingly. It has no knowledge of the overall flow state. Adding a new notification type requires no changes to the orchestration logic.
+
+The scanner services are entirely choreographic: no BPMN process drives them. The \texttt{ScannerEventListener} consumes their events from Kafka because missing one simply means one alert is not dispatched --- applying the ``can it be ignored?'' test.
+
+\subsection{Evaluating change scenarios}
+
+If we needed to add a fraud-check step before payment:
+\begin{itemize}
+    \item \textbf{E2 choreography}: Modify the payment service's Kafka listener to await a fraud-check result. Multiple services change.
+    \item \textbf{E3/E4 orchestration}: Add a new service task to the \texttt{payment-process} BPMN and deploy a \texttt{fraud-check} job worker. No existing service code changes.
+\end{itemize}
+
+
+\section{Camunda~7 / Operaton vs Camunda~8 / Zeebe --- Our Decision}
+
+\begin{table}[H]
+    \centering
+    \caption{Camunda~7 vs Camunda~8 applied to WorldPulse}
+    \small
+    \begin{tabular}{
+        >{\raggedright\arraybackslash}p{0.15\textwidth}
+        >{\raggedright\arraybackslash}p{0.35\textwidth}
+        >{\raggedright\arraybackslash}p{0.40\textwidth}
+    }
+    \toprule
+    \textbf{Aspect} & \textbf{Details} & \textbf{Consequence for WorldPulse} \\
+    \midrule
+    Engine arch. & C7: embeddable library (same JVM). C8: always remote (gRPC). & Both can run remotely. Since our workers already run in separate containers, the remote model fits either way. \\
+    \addlinespace
+    Glue code & C7: Java Delegates + external task workers. C8: job workers only. & Java Delegates would force domain logic into the engine's JVM, violating ADR~0002. C8's \texttt{@JobWorker} annotation requires less setup. \\
+    \addlinespace
+    Persistence & C7: relational DB tables. C8: event sourcing (exported to ES). & Event sourcing aligns with our event-driven architecture. Mild advantage for C8. \\
+    \addlinespace
+    Connectors & C7: custom code / REST. C8: built-in connectors (Slack, etc.). & WorldPulse uses the Slack connector (\texttt{io.camunda:slack:1}) for real-time Slack notifications from the BPMN. Major advantage for C8. \\
+    \addlinespace
+    Deployment & C7: single embedded app. C8: Zeebe + Operate + Tasklist + ES. & C8 adds 4 containers. Clear simplicity advantage for C7. Accepted trade-off. \\
+    \addlinespace
+    Community & C7: fully open-source (Operaton). C8: not fully open-source. & Clear advantage for C7. \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Verdict}: Both could support our architecture. We chose Camunda~8 because the worker model preserves service autonomy, the built-in Slack connector saved us from writing custom integration code, and forward compatibility with Camunda Cloud avoids a mid-semester migration. Camunda~7 would win on deployment simplicity and community support.
+
+
+\section{Workflow Engines Combine Events and Commands}
+
+A workflow engine is not purely an orchestrator sending commands --- it also reacts to events and combines both patterns. WorldPulse demonstrates this:
+
+\begin{itemize}
+    \item \textbf{Event-driven}: The process starts when a \texttt{SignupRequestedEvent} arrives on Kafka (reactive, event-triggered). The timer boundary on Process Payment reacts to the passage of time. The error boundary reacts to a domain-level BPMN error thrown by the worker.
+    \item \textbf{Command-driven}: Once started, Zeebe dispatches commands to workers (\texttt{validate-signup}, \texttt{process-payment}, etc.). The user task \texttt{Decide: Retry Payment?} issues an implicit command to the human operator via Tasklist.
+\end{itemize}
+
+
+\section{Comparison with Flowing Retail (Lab~7)}
+
+\begin{table}[H]
+    \centering
+    \caption{Flowing Retail vs WorldPulse}
+    \small
+    \begin{tabular}{
+        >{\raggedright\arraybackslash}p{0.20\textwidth}
+        >{\raggedright\arraybackslash}p{0.35\textwidth}
+        >{\raggedright\arraybackslash}p{0.35\textwidth}
+    }
+    \toprule
+    \textbf{Aspect} & \textbf{Flowing Retail (Lab~7)} & \textbf{WorldPulse E3/E4} \\
+    \midrule
+    Engine & Camunda~7 embedded in Order service & Camunda~8 / Zeebe as shared container \\
+    Orchestrator & Order context owns the BPMN & Process service deploys BPMN; signup context owns the flow \\
+    Worker mechanism & External task workers (C7) & Zeebe job workers (\texttt{@JobWorker}) \\
+    Event ingress & \texttt{OrderPlacedEvent} via Kafka & \texttt{SignupRequestedEvent} via Kafka \\
+    Commands & Kafka messages (\texttt{RetrievePaymentCommand}) & Zeebe job activations (\texttt{process-payment}) \\
+    Exception handling & Timeout boundaries in BPMN & Timer + error boundaries; DLQ for ingress failures \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+The key structural difference: Flowing Retail sends explicit domain commands on Kafka (command-bus pattern). WorldPulse uses Zeebe itself as the command dispatcher by activating typed jobs --- this avoids domain-specific command topics and keeps orchestration logic inside the BPMN rather than spread across Kafka producers.
+
+
+\section{Architecture Decision Records}
+
+Following the recommendation to use structured ADR templates, each ADR below follows the Context--Decision--Consequences format:
+
+\textbf{ADR~0001 --- Use Camunda~8}: \emph{Context}: We need a process engine for orchestrating the signup-to-payment flow across microservices. \emph{Decision}: Camunda~8 (Zeebe) over Camunda~7. \emph{Consequences}: Job workers preserve service autonomy; event-sourced persistence fits EDA style; built-in connectors (Slack) reduce custom code; adds 4 infrastructure containers.
+
+\textbf{ADR~0002 --- Workers in Domain Services}: \emph{Context}: Workers could run centrally in the process service or distributed in domain services. \emph{Decision}: Each service hosts only its own domain workers. \emph{Consequences}: Avoids the process monolith anti-pattern; each service remains independently deployable; the process service contains zero domain logic.
+
+\textbf{ADR~0003 --- Split BPMN into Two Processes}: \emph{Context}: The signup-to-payment flow could be one monolithic BPMN or split by bounded context. \emph{Decision}: Separate \texttt{signup-process} and \texttt{payment-process}, linked via call activity. \emph{Consequences}: Each process has a single owner; payment process is reusable (also called by \texttt{upgrade-process}); variable propagation must be configured explicitly.
+
+\textbf{ADR~0004 --- Kafka as Event Ingress}: \emph{Context}: The process service needs to receive lifecycle events to start BPMN instances. \emph{Decision}: Consume events from the \texttt{worldpulse} Kafka topic rather than direct REST calls. \emph{Consequences}: Preserves the event-driven boundary from E2; \texttt{SignupRequestedEvent} remains a genuine event (other consumers can also subscribe); decouples orchestration from the REST entry point.
+
+\textbf{ADR~0006 --- Resilience Fallbacks}: \emph{Context}: Zeebe's initialisation time exceeds Spring Boot's, causing missed events during startup. \emph{Decision}: Retry process starts up to 3 times with 500\,ms delay; publish \texttt{ProcessStartFailedEvent} to dead-letter topic on exhaustion. \emph{Consequences}: No signup event is silently dropped; dead-letter events are proper Kafka events that monitoring can consume.
+
+
+\section{Reflections and Lessons Learnt}
+
+The most important realisation from Exercise~4 is that the lecture's command vs event distinction resolves concrete design questions. In E2, the payment service reacted to \texttt{SignupRequestedEvent} from Kafka --- a foreign domain event it should not need to understand. Adding a fraud-check service in E2 would have required modifying the payment service's Kafka listener. In E3/E4, payment only responds to a Zeebe job command (\texttt{process-payment}) --- it has no knowledge of the outer flow.
+
+The Camunda~7 vs~8 decision was less clear-cut than expected. The deciding factor was not technical superiority but contextual fit: our microservice architecture already had one container per service, adding Zeebe was consistent with that model, the built-in Slack connector was immediately useful, and the course trajectory towards Camunda Cloud made starting on Zeebe the lower-risk long-term choice.
+
+One misconception we corrected: orchestration does not imply synchronous communication. Zeebe's worker model is entirely asynchronous --- workers poll for jobs, execute them, and complete them. The workflow state is durable regardless of whether workers are available. Temporal coupling is a property of the communication mechanism (synchronous gRPC/REST), not of the orchestration pattern itself.
+
+\end{document}

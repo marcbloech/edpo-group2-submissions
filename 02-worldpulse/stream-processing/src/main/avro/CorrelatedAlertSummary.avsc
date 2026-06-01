@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "CorrelatedAlertSummary",
+  "namespace": "ch.unisg.worldpulse.streams.avro",
+  "fields": [
+    {"name": "sector", "type": "string"},
+    {"name": "matchCount", "type": "long"},
+    {"name": "marketSymbols", "type": {"type": "array", "items": "string"}},
+    {"name": "socialTopics", "type": {"type": "array", "items": "string"}},
+    {"name": "maxAbsMarketChange", "type": ["null", "double"], "default": null},
+    {"name": "maxRiskLevel", "type": "string"},
+    {"name": "windowStart", "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}], "default": null},
+    {"name": "windowEnd", "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}], "default": null}
+  ]
+}

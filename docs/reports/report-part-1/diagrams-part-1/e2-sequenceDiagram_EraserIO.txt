@@ -1,0 +1,33 @@
+typeface clean
+colorMode bold
+autoNumber on
+
+Client [icon: monitor] > Signup [icon: spring, color: blue]: POST /api/signup (name, email, tier)
+activate Signup
+Signup > Kafka [icon: kafka, color: orange]: SignupRequestedEvent {userId, email, name, tier}
+deactivate Signup
+
+Kafka > Notification [icon: spring, color: green]: SignupRequestedEvent
+activate Notification
+Notification > Notification: Send welcome email
+deactivate Notification
+
+Kafka > Payment [icon: spring, color: purple]: SignupRequestedEvent
+activate Payment
+Payment > Payment: Calculate tier pricing (FREE=0, PRO=1900, ENTERPRISE=9900)
+
+alt [label: Payment succeeds - 80% for paid tiers] {
+  Payment > Kafka: PaymentReceivedEvent {userId, email, name, tier}
+  Kafka > Notification: PaymentReceivedEvent
+  activate Notification
+  Notification > Notification: Send payment confirmed email
+  deactivate Notification
+}
+else [label: Payment fails - 20% for paid tiers] {
+  Payment > Kafka: PaymentFailedEvent {userId, email, name, tier}
+  Kafka > Notification: PaymentFailedEvent
+  activate Notification
+  Notification > Notification: Send payment failed email
+  deactivate Notification
+}
+deactivate Payment

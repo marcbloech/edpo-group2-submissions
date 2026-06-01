@@ -30,6 +30,14 @@ class EventPublisher:
     def __init__(self, bootstrap_servers: str, source_name: str):
         self.source_name = source_name
         self.producer = self._connect_with_retry(bootstrap_servers)
+        self._closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
 
     def _connect_with_retry(self, bootstrap_servers: str, max_retries: int = 10) -> KafkaProducer:
         """Connect to Kafka with exponential backoff.
@@ -83,12 +91,36 @@ class EventPublisher:
 
         headers = [("type", event_type.encode("utf-8"))]
 
+        # Note: we do NOT call producer.flush() per message. Per-publish flush
+        # serialises every send and adds a round-trip to every event. The
+        # producer batches in the background; callers must invoke close() (or
+        # use the context manager) at shutdown so buffered messages are flushed
+        # before the process exits.
         self.producer.send(
             TOPIC_NAME,
             value=message,
             headers=headers,
         )
-        self.producer.flush()
 
-        logger.info(f"Published {event_type} to '{TOPIC_NAME}': {data}")
+        logger.debug("Published %s to '%s': %s", event_type, TOPIC_NAME, data)
         return message
+
+    def flush(self, timeout: float | None = None) -> None:
+        """Block until all buffered records are delivered (or timeout elapses)."""
+        if not self._closed:
+            self.producer.flush(timeout=timeout)
+
+    def close(self, timeout: float = 10.0) -> None:
+        """Flush in-flight records and close the underlying producer.
+
+        Safe to call multiple times. Should be invoked at process shutdown
+        (or via the context-manager protocol) to avoid losing buffered events.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self.producer.flush(timeout=timeout)
+        finally:
+            self.producer.close(timeout=timeout)
+        logger.info("EventPublisher closed")

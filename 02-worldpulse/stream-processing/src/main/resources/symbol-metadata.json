@@ -1,0 +1,15 @@
+[
+  {"symbol": "AAPL",             "displayName": "Apple Inc.",              "sector": "Technology",         "category": "STOCK"},
+  {"symbol": "MSFT",             "displayName": "Microsoft Corporation",  "sector": "Technology",         "category": "STOCK"},
+  {"symbol": "GOOGL",            "displayName": "Alphabet Inc.",          "sector": "Technology",         "category": "STOCK"},
+  {"symbol": "AMZN",             "displayName": "Amazon.com Inc.",        "sector": "Technology",         "category": "STOCK"},
+  {"symbol": "XOM",              "displayName": "Exxon Mobil Corporation","sector": "Energy/Commodities", "category": "STOCK"},
+  {"symbol": "CL=F",             "displayName": "Crude Oil Futures (WTI)","sector": "Energy/Commodities", "category": "COMMODITY"},
+  {"symbol": "BTC-USD",          "displayName": "Bitcoin",                "sector": "Cryptocurrency",     "category": "CRYPTO"},
+  {"symbol": "ETH-USD",          "displayName": "Ethereum",              "sector": "Cryptocurrency",     "category": "CRYPTO"},
+  {"symbol": "Iran oil strike",  "displayName": "Iran Oil Strike",       "sector": "Energy/Commodities", "category": "SOCIAL_TOPIC"},
+  {"symbol": "oil prices",       "displayName": "Oil Prices",            "sector": "Energy/Commodities", "category": "SOCIAL_TOPIC"},
+  {"symbol": "Grok-X release",    "displayName": "Grok-X Release",         "sector": "Technology",         "category": "SOCIAL_TOPIC"},
+  {"symbol": "AI regulation",    "displayName": "AI Regulation",         "sector": "Technology",         "category": "SOCIAL_TOPIC"},
+  {"symbol": "crypto crash",     "displayName": "Crypto Market Crash",   "sector": "Cryptocurrency",     "category": "SOCIAL_TOPIC"}
+]

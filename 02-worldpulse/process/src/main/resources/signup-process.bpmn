@@ -11,6 +11,7 @@
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="validate-signup" />
         <zeebe:ioMapping>
+          <zeebe:input source="=userId" target="userId" />
           <zeebe:input source="=name" target="name" />
           <zeebe:input source="=email" target="email" />
           <zeebe:input source="=tier" target="tier" />

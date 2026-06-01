@@ -1,0 +1,11 @@
+{
+  "type": "record",
+  "name": "AlertStats",
+  "namespace": "ch.unisg.worldpulse.streams.avro",
+  "fields": [
+    {"name": "symbolOrTopic", "type": "string"},
+    {"name": "alertCount", "type": "long"},
+    {"name": "avgChangePercent", "type": "double"},
+    {"name": "lastRiskLevel", "type": "string"}
+  ]
+}
